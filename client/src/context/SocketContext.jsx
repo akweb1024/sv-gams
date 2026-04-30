@@ -12,6 +12,9 @@ export function SocketProvider({ children }) {
   useEffect(() => {
     if (token) {
       const newSocket = io(window.location.origin, {
+        auth: {
+          token
+        },
         transports: ['websocket', 'polling']
       })
 
@@ -30,6 +33,9 @@ export function SocketProvider({ children }) {
       return () => {
         newSocket.close()
       }
+    } else {
+      setSocket(null)
+      setConnected(false)
     }
   }, [token])
 

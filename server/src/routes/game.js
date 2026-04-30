@@ -357,7 +357,7 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'NPC ID required' });
     }
 
-    const npc = await prisma.user.findUnique({
+    const npc = await prisma.user.findFirst({
       where: { id: npcId, isNpc: true },
       include: { inventory: true }
     });

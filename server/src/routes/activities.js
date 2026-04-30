@@ -4,44 +4,6 @@ const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get all activities for a space level
-router.get('/:spaceLevel', authMiddleware, async (req, res) => {
-  try {
-    const spaceLevel = parseInt(req.params.spaceLevel);
-    const user = req.user;
-
-    if (user.spaceLevel < spaceLevel) {
-      return res.status(403).json({ message: 'Space not unlocked' });
-    }
-
-    const activities = await prisma.activity.findMany({
-      where: {
-        spaceLevel: spaceLevel,
-        isActive: true
-      },
-      orderBy: { difficulty: 'asc' }
-    });
-
-    // Get user's progress on each activity
-    const userActivities = await prisma.userActivity.findMany({
-      where: { userId: user.id }
-    });
-
-    const activitiesWithProgress = activities.map(act => {
-      const ua = userActivities.find(ua => ua.activityId === act.id);
-      return {
-        ...act,
-        userProgress: ua || null
-      };
-    });
-
-    res.json({ activities: activitiesWithProgress });
-  } catch (error) {
-    console.error('Get activities error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 // Get single activity
 router.get('/detail/:id', authMiddleware, async (req, res) => {
   try {
@@ -63,6 +25,64 @@ router.get('/detail/:id', authMiddleware, async (req, res) => {
     res.json({ activity, userProgress: userActivity });
   } catch (error) {
     console.error('Get activity error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get user's activity history
+router.get('/user/history', authMiddleware, async (req, res) => {
+  try {
+    const history = await prisma.userActivity.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+
+    res.json({ history });
+  } catch (error) {
+    console.error('Activity history error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all activities for a space level
+router.get('/:spaceLevel', authMiddleware, async (req, res) => {
+  try {
+    const spaceLevel = parseInt(req.params.spaceLevel, 10);
+    const user = req.user;
+
+    if (!Number.isInteger(spaceLevel) || spaceLevel <= 0) {
+      return res.status(400).json({ message: 'Invalid space level' });
+    }
+
+    if (user.spaceLevel < spaceLevel) {
+      return res.status(403).json({ message: 'Space not unlocked' });
+    }
+
+    const activities = await prisma.activity.findMany({
+      where: {
+        spaceLevel,
+        isActive: true
+      },
+      orderBy: { difficulty: 'asc' }
+    });
+
+    // Get user's progress on each activity
+    const userActivities = await prisma.userActivity.findMany({
+      where: { userId: user.id }
+    });
+
+    const activitiesWithProgress = activities.map((act) => {
+      const ua = userActivities.find((entry) => entry.activityId === act.id);
+      return {
+        ...act,
+        userProgress: ua || null
+      };
+    });
+
+    res.json({ activities: activitiesWithProgress });
+  } catch (error) {
+    console.error('Get activities error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -131,6 +151,8 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
 
     const now = new Date();
 
+    const wasCompletedBefore = !!userActivity?.completed;
+
     if (!userActivity) {
       userActivity = await prisma.userActivity.create({
         data: {
@@ -162,7 +184,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
 
     // Give rewards if passed and not previously completed
     let rewards = null;
-    if (passed && !userActivity.completed) {
+    if (passed && !wasCompletedBefore) {
       const pointsEarned = activity.rewardPoints;
       const crystalsEarned = activity.rewardCrystals;
       const experienceGain = pointsEarned * 3;
@@ -207,22 +229,6 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Submit activity error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get user's activity history
-router.get('/user/history', authMiddleware, async (req, res) => {
-  try {
-    const history = await prisma.userActivity.findMany({
-      where: { userId: req.user.id },
-      orderBy: { createdAt: 'desc' },
-      take: 50
-    });
-
-    res.json({ history });
-  } catch (error) {
-    console.error('Activity history error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 
 const prisma = require('./utils/prisma');
 
@@ -52,12 +53,50 @@ app.use('/api/activities', activityRoutes);
 // Socket.io for real-time features
 const connectedUsers = new Map(); // socketId -> { userId, username, spaceLevel }
 
+io.use(async (socket, next) => {
+  try {
+    const tokenFromAuth = socket.handshake.auth?.token;
+    const authHeader = socket.handshake.headers?.authorization;
+    const tokenFromHeader = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    const token = tokenFromAuth || tokenFromHeader;
+
+    if (!token) {
+      return next(new Error('Unauthorized: missing socket token'));
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        username: true,
+        spaceLevel: true
+      }
+    });
+
+    if (!user) {
+      return next(new Error('Unauthorized: user not found'));
+    }
+
+    socket.user = user;
+    return next();
+  } catch (error) {
+    return next(new Error('Unauthorized socket connection'));
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   // User joins a space
   socket.on('join-space', (data) => {
-    const { userId, username, spaceLevel } = data;
+    const userId = socket.user.id;
+    const username = socket.user.username;
+    const requestedLevel = Number(data?.spaceLevel);
+    const safeLevel = Number.isInteger(requestedLevel) && requestedLevel > 0
+      ? Math.min(requestedLevel, socket.user.spaceLevel)
+      : socket.user.spaceLevel;
+    const spaceLevel = safeLevel;
     connectedUsers.set(socket.id, { userId, username, spaceLevel });
     socket.join(`space-${spaceLevel}`);
     
@@ -82,16 +121,20 @@ io.on('connection', (socket) => {
     const user = connectedUsers.get(socket.id);
     
     if (user) {
+      const nextSpace = Number(newSpace);
+      if (!Number.isInteger(nextSpace) || nextSpace <= 0 || nextSpace > socket.user.spaceLevel) {
+        return;
+      }
       socket.leave(`space-${oldSpace}`);
-      socket.join(`space-${newSpace}`);
-      user.spaceLevel = newSpace;
+      socket.join(`space-${nextSpace}`);
+      user.spaceLevel = nextSpace;
       
       socket.to(`space-${oldSpace}`).emit('user-left', {
         userId: user.userId,
         socketId: socket.id
       });
       
-      socket.to(`space-${newSpace}`).emit('user-joined', {
+      socket.to(`space-${nextSpace}`).emit('user-joined', {
         userId: user.userId,
         username: user.username,
         socketId: socket.id
