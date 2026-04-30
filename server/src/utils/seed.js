@@ -380,7 +380,7 @@ async function seed() {
         isNpc: true,
         lastLogin: new Date(),
       },
-      data: {
+      create: {
         ...npc,
         isNpc: true,
         createdAt: new Date(),
