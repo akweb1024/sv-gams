@@ -301,39 +301,85 @@ const activitiesData = [
 async function seed() {
   console.log('Starting database seed...');
 
-  // Clear existing data
-  await prisma.userActivity.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.battle.deleteMany();
-  await prisma.inventoryItem.deleteMany();
-  await prisma.allianceMember.deleteMany();
-  await prisma.alliance.deleteMany();
-  await prisma.trade.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.species.deleteMany();
-  await prisma.space.deleteMany();
-
-  // Seed spaces
+  // Seed spaces (idempotent)
   for (const space of spacesData) {
-    await prisma.space.create({ data: space });
+    await prisma.space.upsert({
+      where: { level: space.level },
+      update: {
+        name: space.name,
+        description: space.description,
+        minPower: space.minPower,
+        minLevel: space.minLevel,
+        rewardMultiplier: space.rewardMultiplier,
+        speciesCount: space.speciesCount,
+      },
+      create: space
+    });
   }
   console.log(`Seeded ${spacesData.length} spaces`);
 
-  // Seed species
+  // Seed species (idempotent)
   for (const species of speciesData) {
-    await prisma.species.create({ data: species });
+    await prisma.species.upsert({
+      where: { name: species.name },
+      update: {
+        spaceLevel: species.spaceLevel,
+        power: species.power,
+        health: species.health,
+        abilities: species.abilities,
+        rewardPoints: species.rewardPoints,
+        rewardCrystals: species.rewardCrystals,
+        rarity: species.rarity,
+      },
+      create: species
+    });
   }
   console.log(`Seeded ${speciesData.length} species`);
 
-  // Seed activities
+  // Seed activities (idempotent by title + spaceLevel)
   for (const activity of activitiesData) {
-    await prisma.activity.create({ data: activity });
+    const existing = await prisma.activity.findFirst({
+      where: {
+        title: activity.title,
+        spaceLevel: activity.spaceLevel
+      }
+    });
+    if (existing) {
+      await prisma.activity.update({
+        where: { id: existing.id },
+        data: {
+          type: activity.type,
+          description: activity.description,
+          difficulty: activity.difficulty,
+          data: activity.data,
+          rewardPoints: activity.rewardPoints,
+          rewardCrystals: activity.rewardCrystals,
+          timeLimit: activity.timeLimit,
+          isActive: true
+        }
+      });
+    } else {
+      await prisma.activity.create({ data: activity });
+    }
   }
   console.log(`Seeded ${activitiesData.length} activities`);
 
-  // Seed NPC warriors
+  // Seed NPC warriors (idempotent, do not touch real players)
   for (const npc of npcWarriorsData) {
-    const user = await prisma.user.create({
+    const user = await prisma.user.upsert({
+      where: { username: npc.username },
+      update: {
+        displayName: npc.displayName,
+        level: npc.level,
+        power: npc.power,
+        health: npc.health,
+        maxHealth: npc.maxHealth,
+        spaceLevel: npc.spaceLevel,
+        wins: npc.wins,
+        losses: npc.losses,
+        isNpc: true,
+        lastLogin: new Date(),
+      },
       data: {
         ...npc,
         isNpc: true,
@@ -348,6 +394,7 @@ async function seed() {
       { itemType: 'armor', itemName: `${npc.displayName}'s Armor`, powerBonus: 0, healthBonus: Math.floor(npc.health * 0.1), rarity: 'rare', quantity: 1 },
     ];
 
+    await prisma.inventoryItem.deleteMany({ where: { userId: user.id } });
     await prisma.inventoryItem.createMany({
       data: npcItems.map(item => ({ ...item, userId: user.id }))
     });

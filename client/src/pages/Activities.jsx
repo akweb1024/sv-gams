@@ -56,7 +56,7 @@ function Activities() {
     <div className="activities-page">
       <div className="space-header-bar">
         <h1>🎯 Activities - Space-{level}</h1>
-        <Link to={`/space/${level}`} className="btn-back">← Back to Space</Link>
+        <Link to={`/spaces/${level}`} className="btn-back">← Back to Space</Link>
       </div>
 
       <p className="subtitle">Complete brain challenges and physics games to earn points and crystals!</p>
@@ -92,6 +92,12 @@ function Activities() {
           </div>
         ))}
       </div>
+      {activities.length === 0 && (
+        <div className="empty-state-card">
+          <h3>No activities available for this space</h3>
+          <p>Activities are not seeded yet for Space-{level}. Please contact admin to seed data.</p>
+        </div>
+      )}
     </div>
   )
 }

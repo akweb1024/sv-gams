@@ -96,6 +96,12 @@ function Spaces() {
           </div>
         ))}
       </div>
+      {spaces.length === 0 && (
+        <div className="empty-state-card">
+          <h3>No spaces available yet</h3>
+          <p>Game data is not seeded in this environment. Ask admin to run one-time seed.</p>
+        </div>
+      )}
     </div>
   )
 }
