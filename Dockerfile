@@ -8,6 +8,7 @@ RUN npm run build
 FROM node:20-alpine AS server-builder
 WORKDIR /app/server
 ENV PRISMA_SKIP_POSTINSTALL_GENERATE=true
+RUN apk add --no-cache openssl
 COPY server/package*.json ./
 RUN npm ci --omit=dev
 COPY server/prisma ./prisma
@@ -18,7 +19,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=5000
-ENV DATABASE_URL=file:/app/data/game.db
+ENV DATABASE_URL=postgresql://postgres:postgres@postgres:5432/game?schema=public
+RUN apk add --no-cache openssl
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 

@@ -3,7 +3,7 @@
 This guide deploys the game as a single production service:
 - Express API + Socket.IO backend
 - Vite frontend static build served by Express
-- SQLite persisted on a Coolify volume
+- Postgres database in Coolify
 
 ## 1. Push Repo to GitHub
 
@@ -29,7 +29,7 @@ Set these in Coolify Application -> Environment Variables:
 - `HOST=0.0.0.0`
 - `PORT=5000`
 - `JWT_SECRET=<long random secret, 32+ chars>`
-- `DATABASE_URL=file:/app/data/game.db`
+- `DATABASE_URL=postgresql://postgres:<password>@<postgres-host>:5432/game?schema=public`
 - `RUN_MIGRATIONS=true`
 - `RUN_SEED=true` (first deploy only)
 - `PRISMA_LOG_INFO=false`
@@ -37,14 +37,16 @@ Set these in Coolify Application -> Environment Variables:
 
 After first successful deploy, set `RUN_SEED=false` so game data is not reset on every redeploy.
 
-## 4. Add Persistent Storage (Required for SQLite)
+## 4. Add and Configure Postgres (Required)
 
-In Coolify Application -> Persistent Storage:
+1. In Coolify, add a `PostgreSQL` service in the same project/network.
+2. Create database `game` (or your preferred name).
+3. Use the Postgres connection values to build `DATABASE_URL`.
+4. Set `DATABASE_URL` on the app and redeploy.
 
-- Mount Path: `/app/data`
-- Size: choose as needed (for example 1-5 GB to start)
+Example:
 
-Without this mount, SQLite data is lost on redeploy/restart.
+`postgresql://postgres:strong_password@postgres:5432/game?schema=public`
 
 ## 5. Domain, SSL, and Health Check
 
@@ -76,14 +78,28 @@ Recommended:
 ## 8. Production Safety Checklist
 
 - Use a strong `JWT_SECRET` and rotate periodically.
-- Keep persistent volume backups.
+- Keep Postgres backups/snapshots.
 - Monitor app logs and error rates.
 - Pin Node version with Dockerfile (already set to Node 20).
 - Use HTTPS only for users.
 
-## Optional: Move to Postgres Later
+## 9. Migration Strategy (SQLite -> Postgres)
 
-For larger scale, migrate from SQLite to Postgres:
-- add a managed Postgres in Coolify
-- update Prisma datasource and `DATABASE_URL`
-- run migrations against Postgres
+This repository is now Postgres-first:
+- Prisma datasource provider is `postgresql`
+- Prisma migrations are regenerated for Postgres baseline
+
+Choose one migration path:
+
+### A. Fresh production database (recommended)
+1. Provision empty Postgres DB.
+2. Deploy app with `RUN_MIGRATIONS=true` and `RUN_SEED=true` once.
+3. After bootstrap, set `RUN_SEED=false`.
+
+### B. Existing SQLite live data that must be kept
+1. Keep old production running on SQLite while migrating.
+2. Export data from SQLite and import into Postgres using a one-time script/ETL.
+3. Validate row counts and critical user flows.
+4. Switch app `DATABASE_URL` to Postgres and deploy.
+
+Note: Prisma does not auto-move data between SQLite and Postgres during `migrate deploy`; it only applies schema migrations.

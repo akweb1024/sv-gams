@@ -3,89 +3,89 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id          String   @id @default(uuid())
-  username    String   @unique
-  email       String   @unique
+  id          String  @id @default(uuid())
+  username    String  @unique
+  email       String  @unique
   password    String
   displayName String?
   avatar      String?
 
   // NPC flag
-  isNpc       Boolean  @default(false)
+  isNpc Boolean @default(false)
 
   // Game stats
-  level           Int      @default(1)
-  experience      Int      @default(0)
-  power           Int      @default(100)
-  health          Int      @default(100)
-  maxHealth       Int      @default(100)
-  points          Int      @default(0)
-  crystals        Int      @default(0)
-  spaceLevel      Int      @default(1)
-  wins            Int      @default(0)
-  losses          Int      @default(0)
-  draws           Int      @default(0)
+  level      Int @default(1)
+  experience Int @default(0)
+  power      Int @default(100)
+  health     Int @default(100)
+  maxHealth  Int @default(100)
+  points     Int @default(0)
+  crystals   Int @default(0)
+  spaceLevel Int @default(1)
+  wins       Int @default(0)
+  losses     Int @default(0)
+  draws      Int @default(0)
 
   // Timestamps
-  createdAt       DateTime @default(now())
-  lastLogin       DateTime @default(now())
+  createdAt DateTime @default(now())
+  lastLogin DateTime @default(now())
 
   // Relations
-  inventory       InventoryItem[]
-  battlesAsAttacker Battle[] @relation("AttackerBattles")
-  alliances       AllianceMember[]
-  tradesSent      Trade[] @relation("TradeSender")
-  tradesReceived  Trade[] @relation("TradeReceiver")
+  inventory         InventoryItem[]
+  battlesAsAttacker Battle[]         @relation("AttackerBattles")
+  alliances         AllianceMember[]
+  tradesSent        Trade[]          @relation("TradeSender")
+  tradesReceived    Trade[]          @relation("TradeReceiver")
 
   @@map("users")
 }
 
 model InventoryItem {
-  id        String @id @default(uuid())
-  userId    String
-  itemType  String // weapon, armor, potion, artifact, etc.
-  itemName  String
-  rarity    String @default("common")
-  powerBonus Int   @default(0)
-  healthBonus Int  @default(0)
-  quantity  Int    @default(1)
+  id          String @id @default(uuid())
+  userId      String
+  itemType    String // weapon, armor, potion, artifact, etc.
+  itemName    String
+  rarity      String @default("common")
+  powerBonus  Int    @default(0)
+  healthBonus Int    @default(0)
+  quantity    Int    @default(1)
 
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("inventory_items")
 }
 
 model Battle {
-  id          String   @id @default(uuid())
-  attackerId  String
-  defenderId  String
-  spaceLevel  Int
-  winnerId    String?
+  id         String  @id @default(uuid())
+  attackerId String
+  defenderId String
+  spaceLevel Int
+  winnerId   String?
 
-  battleType  String   @default("pvp") // pvp, pve_species, pve_npc
+  battleType String @default("pvp") // pvp, pve_species, pve_npc
 
-  attackerPower Int
-  defenderPower Int
+  attackerPower  Int
+  defenderPower  Int
   attackerHealth Int
   defenderHealth Int
 
-  rounds      Int      @default(0)
-  log         String?
+  rounds Int     @default(0)
+  log    String?
 
   pointsEarned Int     @default(0)
   rewardType   String?
   rewardAmount Int     @default(0)
 
-  status      String   @default("pending")
-  createdAt   DateTime @default(now())
-  endedAt     DateTime?
+  status    String    @default("pending")
+  createdAt DateTime  @default(now())
+  endedAt   DateTime?
 
-  attacker    User     @relation("AttackerBattles", fields: [attackerId], references: [id])
+  attacker User @relation("AttackerBattles", fields: [attackerId], references: [id])
 
   @@map("battles")
 }
@@ -99,100 +99,100 @@ model Alliance {
   maxMembers  Int      @default(10)
   createdAt   DateTime @default(now())
 
-  members     AllianceMember[]
+  members AllianceMember[]
 
   @@map("alliances")
 }
 
 model AllianceMember {
-  id          String @id @default(uuid())
-  allianceId  String
-  userId      String
-  role        String @default("member")
-  joinedAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  allianceId String
+  userId     String
+  role       String   @default("member")
+  joinedAt   DateTime @default(now())
 
-  alliance    Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alliance Alliance @relation(fields: [allianceId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([allianceId, userId])
   @@map("alliance_members")
 }
 
 model Trade {
-  id           String @id @default(uuid())
-  senderId     String
-  receiverId   String
+  id         String @id @default(uuid())
+  senderId   String
+  receiverId String
 
-  offerType    String
-  offerAmount  Int    @default(0)
-  offerItemId  String?
+  offerType   String
+  offerAmount Int     @default(0)
+  offerItemId String?
 
   requestType   String
-  requestAmount Int    @default(0)
+  requestAmount Int     @default(0)
   requestItemId String?
 
-  status       String @default("pending")
-  createdAt    DateTime @default(now())
-  resolvedAt   DateTime?
+  status     String    @default("pending")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
 
-  sender       User   @relation("TradeSender", fields: [senderId], references: [id])
-  receiver     User   @relation("TradeReceiver", fields: [receiverId], references: [id])
+  sender   User @relation("TradeSender", fields: [senderId], references: [id])
+  receiver User @relation("TradeReceiver", fields: [receiverId], references: [id])
 
   @@map("trades")
 }
 
 model Space {
-  id           Int      @id @default(autoincrement())
-  level        Int      @unique
-  name         String
-  description  String
-  minPower     Int      @default(0)
-  minLevel     Int      @default(1)
-  rewardMultiplier Float @default(1.0)
-  speciesCount Int      @default(5)
+  id               Int    @id @default(autoincrement())
+  level            Int    @unique
+  name             String
+  description      String
+  minPower         Int    @default(0)
+  minLevel         Int    @default(1)
+  rewardMultiplier Float  @default(1.0)
+  speciesCount     Int    @default(5)
 
   @@map("spaces")
 }
 
 model Species {
-  id          String @id @default(uuid())
-  name        String @unique
-  spaceLevel  Int
-  power       Int
-  health      Int
-  abilities   String?
-  rewardPoints Int   @default(10)
-  rewardCrystals Int @default(0)
-  rarity      String @default("common")
+  id             String  @id @default(uuid())
+  name           String  @unique
+  spaceLevel     Int
+  power          Int
+  health         Int
+  abilities      String?
+  rewardPoints   Int     @default(10)
+  rewardCrystals Int     @default(0)
+  rarity         String  @default("common")
 
   @@map("species")
 }
 
 model Activity {
-  id          String   @id @default(uuid())
-  type        String   // riddle, math, pattern, memory, physics
-  title       String
-  description String
-  difficulty  String   @default("easy") // easy, medium, hard
-  spaceLevel  Int      @default(1)
-  data        String?  // JSON: questions, answers, patterns
-  rewardPoints Int     @default(20)
-  rewardCrystals Int   @default(0)
-  timeLimit   Int      @default(60) // seconds
-  isActive    Boolean  @default(true)
+  id             String  @id @default(uuid())
+  type           String // riddle, math, pattern, memory, physics
+  title          String
+  description    String
+  difficulty     String  @default("easy") // easy, medium, hard
+  spaceLevel     Int     @default(1)
+  data           String? // JSON: questions, answers, patterns
+  rewardPoints   Int     @default(20)
+  rewardCrystals Int     @default(0)
+  timeLimit      Int     @default(60) // seconds
+  isActive       Boolean @default(true)
 
   @@map("activities")
 }
 
 model UserActivity {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
   activityId  String
-  score       Int      @default(0)
-  completed   Boolean  @default(false)
-  attempts    Int      @default(0)
-  bestTime    Int?     // seconds
-  createdAt   DateTime @default(now())
+  score       Int       @default(0)
+  completed   Boolean   @default(false)
+  attempts    Int       @default(0)
+  bestTime    Int? // seconds
+  createdAt   DateTime  @default(now())
   completedAt DateTime?
 
   @@map("user_activities")

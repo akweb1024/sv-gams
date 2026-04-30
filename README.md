@@ -45,7 +45,7 @@ An online multiplayer game inspired by the PocketFM story "Shoorveer", where war
 ## 🏗️ Architecture
 
 ### Backend (Node.js + Express)
-- **Database**: SQLite with Prisma ORM
+- **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: JWT-based auth
 - **Real-time**: Socket.io for WebSocket connections
 - **API Routes**:
@@ -173,7 +173,7 @@ shoorveer-game/
 - Frontend is built with Vite and served by the Express backend in production.
 - Use the full deployment runbook: `docs/COOLIFY_GITHUB_DEPLOYMENT.md`
 - Copy environment values from `.env.example` and set them in Coolify.
-- Important: mount persistent storage at `/app/data` for SQLite durability.
+- Use a managed Postgres service and set a valid `DATABASE_URL`.
 
 ## 🔮 Future Enhancements
 - Player vs Player (PvP) battles
