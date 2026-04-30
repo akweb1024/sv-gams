@@ -13,12 +13,26 @@ function Battle() {
   const [isBattling, setIsBattling] = useState(false)
   const [showResult, setShowResult] = useState(false)
   const [animatedLog, setAnimatedLog] = useState([])
+  const [battleError, setBattleError] = useState('')
+
+  useEffect(() => {
+    if (!speciesId) {
+      setBattleError('Invalid battle link. Species ID is missing.')
+    } else {
+      setBattleError('')
+    }
+  }, [speciesId])
 
   const startBattle = async () => {
+    if (!speciesId) {
+      setBattleError('Invalid battle link. Species ID is missing.')
+      return
+    }
     setIsBattling(true)
     setShowResult(false)
     setAnimatedLog([])
     setCurrentRound(0)
+    setBattleError('')
 
     try {
       const token = localStorage.getItem('token')
@@ -50,6 +64,7 @@ function Battle() {
 
     } catch (error) {
       console.error('Battle error:', error)
+      setBattleError(error?.response?.data?.message || 'Unable to start this battle. This species may not exist anymore.')
       setIsBattling(false)
     }
   }
@@ -60,7 +75,17 @@ function Battle() {
         <h1>⚔️ Battle Arena</h1>
       </div>
 
-      {!isBattling && !showResult && (
+      {battleError && (
+        <div className="empty-state-card">
+          <h3>Battle unavailable</h3>
+          <p>{battleError}</p>
+          <button onClick={() => navigate('/spaces')} className="btn-primary" style={{ marginTop: '10px' }}>
+            Back to Spaces
+          </button>
+        </div>
+      )}
+
+      {!battleError && !isBattling && !showResult && (
         <div className="battle-start">
           <div className="vs-display">
             <div className="fighter player">
