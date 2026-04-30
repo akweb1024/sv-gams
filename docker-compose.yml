@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shoorveer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: game
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d game"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - game_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shoorveer-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+      JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/game?schema=public
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      RUN_SEED: ${RUN_SEED:-false}
+      PRISMA_LOG_INFO: ${PRISMA_LOG_INFO:-false}
+      PRISMA_LOG_QUERIES: ${PRISMA_LOG_QUERIES:-false}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+    networks:
+      - game_net
+
+volumes:
+  postgres_data:
+
+networks:
+  game_net:
+    driver: bridge

@@ -175,6 +175,29 @@ shoorveer-game/
 - Copy environment values from `.env.example` and set them in Coolify.
 - Use a managed Postgres service and set a valid `DATABASE_URL`.
 
+## 🐳 Docker Compose (App + Postgres)
+You can run and manage the full stack from one compose file with Postgres database name fixed to `game`.
+
+1. Create compose env file:
+```bash
+cp .env.compose.example .env.compose
+```
+2. Edit `.env.compose` and set strong values for:
+- `POSTGRES_PASSWORD`
+- `JWT_SECRET`
+3. Start stack:
+```bash
+docker compose --env-file .env.compose up -d --build
+```
+4. View logs:
+```bash
+docker compose --env-file .env.compose logs -f app
+```
+5. Stop stack:
+```bash
+docker compose --env-file .env.compose down
+```
+
 ## 🔮 Future Enhancements
 - Player vs Player (PvP) battles
 - Alliance wars and territory control
