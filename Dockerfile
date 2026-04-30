@@ -1,7 +1,7 @@
 FROM node:20-alpine AS client-builder
 WORKDIR /app/client
 COPY client/package*.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund || npm ci --no-audit --no-fund || npm ci --no-audit --no-fund
 COPY client/ ./
 RUN npm run build
 
@@ -10,7 +10,7 @@ WORKDIR /app/server
 ENV PRISMA_SKIP_POSTINSTALL_GENERATE=true
 RUN apk add --no-cache openssl
 COPY server/package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund || npm ci --omit=dev --no-audit --no-fund || npm ci --omit=dev --no-audit --no-fund
 COPY server/prisma ./prisma
 RUN npx prisma generate
 
