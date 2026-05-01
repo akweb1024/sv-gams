@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSocket } from '../context/SocketContext'
@@ -9,6 +9,31 @@ function Navbar() {
   const { connected } = useSocket()
   const { lang, toggleLanguage, t } = useLanguage()
   const navigate = useNavigate()
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (!user) {
+        setIsAdmin(false)
+        return
+      }
+      try {
+        const token = localStorage.getItem('token')
+        const res = await fetch('/api/game/admin/status', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (!res.ok) {
+          setIsAdmin(false)
+          return
+        }
+        const data = await res.json()
+        setIsAdmin(!!data.isAdmin)
+      } catch (error) {
+        setIsAdmin(false)
+      }
+    }
+    checkAdmin()
+  }, [user])
 
   const handleLogout = () => {
     logout()
@@ -32,6 +57,7 @@ function Navbar() {
             <Link to="/alliances">{t('alliances')}</Link>
             <Link to="/trades">{t('trades')}</Link>
             <Link to="/leaderboard">{t('leaderboard')}</Link>
+            {isAdmin && <Link to="/admin">Admin</Link>}
           </div>
           
           <div className="nav-user">

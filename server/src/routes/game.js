@@ -322,6 +322,73 @@ router.get('/admin/status', authMiddleware, async (req, res) => {
   }
 });
 
+// Admin monitoring overview
+router.get('/admin/overview', authMiddleware, async (req, res) => {
+  try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        message: 'Admin access required.'
+      });
+    }
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [
+      totalUsers,
+      playerUsers,
+      npcUsers,
+      onlineRecentUsers,
+      totalSpaces,
+      totalSpecies,
+      activeActivities,
+      totalBossBattles,
+      bossBattles24h
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isNpc: false } }),
+      prisma.user.count({ where: { isNpc: true } }),
+      prisma.user.count({ where: { isNpc: false, lastLogin: { gte: fiveMinutesAgo } } }),
+      prisma.space.count(),
+      prisma.species.count(),
+      prisma.activity.count({ where: { isActive: true } }),
+      prisma.battle.count({ where: { battleType: 'pve_boss' } }),
+      prisma.battle.count({ where: { battleType: 'pve_boss', createdAt: { gte: last24Hours } } })
+    ]);
+
+    const { seasonWindow: weekWindow, bossLeaderboard: weekBossLeaderboard } = await buildBossLeaderboardForSeason('week');
+    const topWeeklyBoss = weekBossLeaderboard.slice(0, 5).map((entry, index) => ({
+      rank: index + 1,
+      username: entry.username,
+      totalBossClears: entry.totalBossClears,
+      totalBossPoints: entry.totalBossPoints,
+      fastestClearRounds: entry.fastestClearRounds
+    }));
+
+    res.json({
+      metrics: {
+        totalUsers,
+        playerUsers,
+        npcUsers,
+        onlineRecentUsers,
+        totalSpaces,
+        totalSpecies,
+        activeActivities,
+        totalBossBattles,
+        bossBattles24h
+      },
+      weeklySeason: {
+        windowStart: weekWindow.start,
+        windowEnd: weekWindow.end,
+        topBossWarriors: topWeeklyBoss
+      }
+    });
+  } catch (error) {
+    console.error('Admin overview error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get world progression summary
 router.get('/world-summary', authMiddleware, async (req, res) => {
   try {

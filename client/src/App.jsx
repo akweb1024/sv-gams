@@ -16,6 +16,7 @@ import Alliances from './pages/Alliances'
 import Trades from './pages/Trades'
 import Leaderboard from './pages/Leaderboard'
 import Profile from './pages/Profile'
+import AdminDashboard from './pages/AdminDashboard'
 import PrivateRoute from './components/PrivateRoute'
 import AppErrorBoundary from './components/AppErrorBoundary'
 
@@ -40,6 +41,7 @@ function App() {
                 <Route path="/trades" element={<PrivateRoute><Trades /></PrivateRoute>} />
                 <Route path="/leaderboard" element={<PrivateRoute><Leaderboard /></PrivateRoute>} />
                 <Route path="/profile/:username" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
               </Routes>
             </AppErrorBoundary>
           </main>
