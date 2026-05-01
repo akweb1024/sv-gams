@@ -9,6 +9,7 @@ const spaceColors = [
 
 function Spaces() {
   const [spaces, setSpaces] = useState([])
+  const [worldSummary, setWorldSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const { user } = useAuth()
 
@@ -22,7 +23,11 @@ function Spaces() {
       const response = await axios.get('/api/game/spaces', {
         headers: { Authorization: `Bearer ${token}` }
       })
+      const summaryRes = await axios.get('/api/game/world-summary', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       setSpaces(response.data.spaces)
+      setWorldSummary(summaryRes.data.summary)
     } catch (error) {
       console.error('Fetch spaces error:', error)
     } finally {
@@ -45,6 +50,22 @@ function Spaces() {
         <h1>🌌 Multi-Dimensional Spaces</h1>
         <p>Travel through dimensions and conquer each realm</p>
       </div>
+      {worldSummary && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <h2>🧭 World Progress</h2>
+          <p>
+            Unlocked {worldSummary.unlockedSpaces}/{worldSummary.totalSpaces} spaces ({worldSummary.completionPercent}%)
+          </p>
+          {worldSummary.nextSpace ? (
+            <p>
+              Next unlock: <strong>Space-{worldSummary.nextSpace.level}</strong> ({worldSummary.nextSpace.name}) ·
+              Need Lv.{worldSummary.nextSpace.minLevel} and {worldSummary.nextSpace.minPower} power
+            </p>
+          ) : (
+            <p>🏁 All current spaces unlocked. You have conquered the known dimensions.</p>
+          )}
+        </div>
+      )}
 
       <div className="spaces-grid">
         {spaces.map((space, index) => (
@@ -89,9 +110,14 @@ function Spaces() {
                 Enter Space →
               </Link>
             ) : (
-              <button className="btn-enter disabled" disabled>
-                Complete Space-{space.level - 1} First
-              </button>
+              <>
+                <button className="btn-enter disabled" disabled>
+                  Locked Dimension
+                </button>
+                <p style={{ marginTop: '10px', fontSize: '0.85rem', opacity: 0.9 }}>
+                  Need {space.missingLevel > 0 ? `Lv +${space.missingLevel}` : 'level ready'} · {space.missingPower > 0 ? `${space.missingPower} more power` : 'power ready'}
+                </p>
+              </>
             )}
           </div>
         ))}

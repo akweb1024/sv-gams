@@ -5,7 +5,7 @@ An online multiplayer game inspired by the PocketFM story "Shoorveer", where war
 ## 🎮 Features
 
 ### Multi-Dimensional Spaces
-- **6 Unique Spaces**: Space-1 through Space-6 with increasing difficulty
+- **10 Unique Spaces**: Space-1 through Space-10 with increasing difficulty
 - Progressive unlocking system - complete one space to unlock the next
 - Each space has unique cosmic species to battle
 - Real-time player presence in spaces via WebSocket
@@ -17,6 +17,9 @@ An online multiplayer game inspired by the PocketFM story "Shoorveer", where war
 
 ### Battle System
 - Turn-based battle mechanics with species
+- New **Boss Battle Mode** in every space with elite enemies and premium rewards
+- Boss cooldown window to prevent farming spam and keep competition fair
+- One-time first-clear boss bonus per space for major progression spikes
 - Animated battle logs showing each round
 - Reward system: Points, Crystals, and Item drops
 - Experience-based leveling system
@@ -36,6 +39,10 @@ An online multiplayer game inspired by the PocketFM story "Shoorveer", where war
 - Global rankings based on points
 - Win/loss tracking
 - Level and power display
+- Boss leaderboard with fastest clear rounds and first-clear timestamps
+- Seasonal filter: switch boss leaderboard between all-time and this-week
+- Last-week tab with automatic top-3 winner archive and recurring reward payouts
+- Admin-only archive rerun endpoint for edge-case seasonal correction
 
 ### Real-Time Features
 - WebSocket-powered real-time chat in spaces
@@ -87,8 +94,8 @@ npm run client
 
 ### Default Game Data
 The setup script seeds the database with:
-- 6 Spaces with increasing difficulty
-- 18 Species across all spaces
+- 10 Spaces with increasing difficulty
+- 26 Species across all spaces
 - Each space has unique requirements and reward multipliers
 
 ## 🌌 Game Mechanics
@@ -102,6 +109,10 @@ The setup script seeds the database with:
 | Space-4 | Quantum Realm | 15 | 1000 | 2.5x |
 | Space-5 | The Abyss | 20 | 2000 | 3.5x |
 | Space-6 | Singularity | 30 | 5000 | 5.0x |
+| Space-7 | Chrono Rift | 40 | 8000 | 6.2x |
+| Space-8 | Celestial Forge | 50 | 12000 | 7.5x |
+| Space-9 | Eternal Nexus | 60 | 17000 | 9.0x |
+| Space-10 | Omniverse Core | 75 | 25000 | 11.0x |
 
 ### Leveling
 - Gain experience by winning battles

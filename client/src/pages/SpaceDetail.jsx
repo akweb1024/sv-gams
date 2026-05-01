@@ -24,6 +24,8 @@ function SpaceDetail() {
   const [chatInput, setChatInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [spaceUsers, setSpaceUsers] = useState([])
+  const [boss, setBoss] = useState(null)
+  const [bossCooldownLeft, setBossCooldownLeft] = useState(0)
 
   useEffect(() => {
     fetchSpaceData()
@@ -57,10 +59,24 @@ function SpaceDetail() {
     }
   }, [level, socket])
 
+  useEffect(() => {
+    if (!boss?.cooldown?.isOnCooldown) {
+      setBossCooldownLeft(0)
+      return
+    }
+
+    setBossCooldownLeft(boss.cooldown.remainingSeconds || 0)
+    const timer = setInterval(() => {
+      setBossCooldownLeft(prev => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [boss?.cooldown?.isOnCooldown, boss?.cooldown?.remainingSeconds])
+
   const fetchSpaceData = async () => {
     try {
       const token = localStorage.getItem('token')
-      const [speciesRes, playersRes, npcsRes] = await Promise.all([
+      const [speciesRes, playersRes, npcsRes, bossRes] = await Promise.all([
         axios.get(`/api/game/spaces/${level}/species`, {
           headers: { Authorization: `Bearer ${token}` }
         }),
@@ -69,11 +85,15 @@ function SpaceDetail() {
         }),
         axios.get(`/api/game/spaces/${level}/npcs`, {
           headers: { Authorization: `Bearer ${token}` }
+        }),
+        axios.get(`/api/game/spaces/${level}/boss`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
       ])
       setSpecies(speciesRes.data.species)
       setPlayers(playersRes.data.players)
       setNpcs(npcsRes.data.npcs)
+      setBoss(bossRes.data?.boss || null)
     } catch (error) {
       console.error('Fetch space data error:', error)
       if (error.response?.status === 403) {
@@ -108,6 +128,38 @@ function SpaceDetail() {
     }
   }
 
+  const battleBoss = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await axios.post('/api/game/battle/boss',
+        { spaceLevel: parseInt(level, 10) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      const result = response.data
+      updateUser(result.user)
+      const firstClearText = result.rewards.firstClearBonus
+        ? `\n🎉 First-Clear Bonus: +${result.rewards.firstClearBonus.points} pts, +${result.rewards.firstClearBonus.crystals} crystals`
+        : ''
+      alert(`${result.result === 'victory' ? '👑 BOSS DEFEATED!' : '💀 BOSS WON!'} vs ${result.opponent}\nEarned: 💎 ${result.rewards.points} pts, 🔮 ${result.rewards.crystals} crystals, ✨ ${result.rewards.experience} XP${firstClearText}${result.rewards.itemDrop ? `\n🎁 Relic: ${result.rewards.itemDrop.itemName} (${result.rewards.itemDrop.rarity})` : ''}${result.leveledUp ? '\n⭐ LEVEL UP!' : ''}`)
+      fetchSpaceData()
+    } catch (error) {
+      console.error('Battle Boss error:', error)
+      const cooldownRemaining = error.response?.data?.cooldown?.remainingSeconds
+      if (cooldownRemaining) {
+        const mins = Math.floor(cooldownRemaining / 60)
+        const secs = cooldownRemaining % 60
+        alert(`Boss battle cooldown active. Try again in ${mins}m ${secs}s.`)
+        fetchSpaceData()
+        return
+      }
+      alert('Boss battle failed: ' + (error.response?.data?.message || 'Unknown error'))
+    }
+  }
+
+  const cooldownMinutes = Math.floor(bossCooldownLeft / 60)
+  const cooldownSeconds = bossCooldownLeft % 60
+  const bossButtonDisabled = bossCooldownLeft > 0
+
   if (loading) {
     return (
       <div className="loading-screen">
@@ -129,6 +181,47 @@ function SpaceDetail() {
 
       <div className="space-layout">
         <div className="space-main">
+          {boss && (
+            <div className="card npc-section">
+              <h2>👑 Space Boss</h2>
+              <div className="npc-grid">
+                <div className="npc-card" style={{ borderColor: '#f1c40f', boxShadow: '0 0 24px rgba(241,196,15,0.35)' }}>
+                  <div className="npc-header">
+                    <span className="npc-icon">👑</span>
+                    <h3>{boss.name}</h3>
+                    <span className="npc-badge" style={{ background: '#f39c12' }}>BOSS</span>
+                  </div>
+                  <div className="npc-stats">
+                    <span>🌌 Space-{boss.spaceLevel}</span>
+                    <span>⚡ Power: {boss.power}</span>
+                    <span>❤️ Health: {boss.health}</span>
+                    <span>💎 {boss.rewardPoints} pts · 🔮 {boss.rewardCrystals}</span>
+                    {boss.firstClearBonus?.available ? (
+                      <span>🎉 First Clear Bonus: +{boss.firstClearBonus.points} pts · +{boss.firstClearBonus.crystals} crystals</span>
+                    ) : (
+                      <span>✅ First clear bonus already claimed</span>
+                    )}
+                    {bossButtonDisabled && (
+                      <span>⏳ Cooldown: {cooldownMinutes}m {cooldownSeconds}s</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={battleBoss}
+                    className="btn-battle"
+                    disabled={bossButtonDisabled}
+                    style={{
+                      background: bossButtonDisabled
+                        ? 'linear-gradient(135deg, #7f8c8d, #95a5a6)'
+                        : 'linear-gradient(135deg, #f39c12, #e67e22)'
+                    }}
+                  >
+                    {bossButtonDisabled ? '⏳ Boss Cooling Down' : '👑 Challenge Boss'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="card npc-section">
             <h2>🤖 Computer Warriors</h2>
             <div className="npc-grid">

@@ -1436,6 +1436,47 @@ a:hover {
   font-size: 0.9rem;
 }
 
+.boss-leaderboard-table h2 {
+  margin-bottom: 14px;
+}
+
+.boss-table-header {
+  display: grid;
+  grid-template-columns: 60px 1fr 120px 140px 140px 1.3fr;
+  gap: 8px;
+  padding: 12px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.boss-table-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 120px 140px 140px 1.3fr;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  align-items: center;
+  transition: all 0.2s;
+}
+
+.boss-table-row:hover {
+  background: var(--bg-hover);
+}
+
+.col-boss-clears,
+.col-boss-points,
+.col-fast-clear {
+  text-align: center;
+}
+
+.col-first-clear {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
 /* ===== PROFILE ===== */
 .profile-page {
   max-width: 1000px;
@@ -1891,12 +1932,21 @@ a:hover {
     grid-template-columns: 40px 1fr 60px;
     font-size: 0.8rem;
   }
+
+  .boss-table-header,
+  .boss-table-row {
+    grid-template-columns: 40px 1fr 80px;
+    font-size: 0.8rem;
+  }
   
   .col-power,
   .col-space,
   .col-points,
   .col-crystals,
-  .col-wins {
+  .col-wins,
+  .col-boss-points,
+  .col-first-clear,
+  .col-fast-clear {
     display: none;
   }
   

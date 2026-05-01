@@ -4,6 +4,13 @@ const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 
+async function getMaxSpaceLevel() {
+  const maxSpace = await prisma.space.aggregate({
+    _max: { level: true }
+  });
+  return maxSpace._max.level || 1;
+}
+
 // Get single activity
 router.get('/detail/:id', authMiddleware, async (req, res) => {
   try {
@@ -193,7 +200,9 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
       const newLevel = Math.floor(Math.sqrt(newExperience / 100)) + 1;
       const newPower = 100 + (newLevel - 1) * 20;
       const newMaxHealth = 100 + (newLevel - 1) * 15;
-      const spaceLevelUp = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+      const maxSpaceLevel = await getMaxSpaceLevel();
+      const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+      const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
 
       await prisma.user.update({
         where: { id: user.id },

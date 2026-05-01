@@ -8,6 +8,10 @@ const spacesData = [
   { level: 4, name: 'Space-4: Quantum Realm', description: 'Reality bends. Only masters survive.', minPower: 1000, minLevel: 15, rewardMultiplier: 2.5, speciesCount: 10 },
   { level: 5, name: 'Space-5: The Abyss', description: 'The edge of existence. Legends are forged here.', minPower: 2000, minLevel: 20, rewardMultiplier: 3.5, speciesCount: 12 },
   { level: 6, name: 'Space-6: Singularity', description: 'All paths converge. The ultimate test.', minPower: 5000, minLevel: 30, rewardMultiplier: 5.0, speciesCount: 15 },
+  { level: 7, name: 'Space-7: Chrono Rift', description: 'Time fractures here. Fast minds and faster strikes survive.', minPower: 8000, minLevel: 40, rewardMultiplier: 6.2, speciesCount: 18 },
+  { level: 8, name: 'Space-8: Celestial Forge', description: 'Stars are forged into weapons. Endurance defines champions.', minPower: 12000, minLevel: 50, rewardMultiplier: 7.5, speciesCount: 20 },
+  { level: 9, name: 'Space-9: Eternal Nexus', description: 'Ancient gateways merge worlds in endless conflict.', minPower: 17000, minLevel: 60, rewardMultiplier: 9.0, speciesCount: 22 },
+  { level: 10, name: 'Space-10: Omniverse Core', description: 'Final convergence point of all dimensions. Only legends stand.', minPower: 25000, minLevel: 75, rewardMultiplier: 11.0, speciesCount: 25 },
 ];
 
 const speciesData = [
@@ -36,6 +40,14 @@ const speciesData = [
   { name: 'Void Overlord', spaceLevel: 4, power: 1500, health: 1000, abilities: '{"attack": "oblivion", "defense": "void"}', rewardPoints: 800, rewardCrystals: 30, rarity: 'legendary' },
   { name: 'Cosmic Demigod', spaceLevel: 5, power: 2500, health: 2000, abilities: '{"attack": "nova", "defense": "immortal"}', rewardPoints: 1500, rewardCrystals: 50, rarity: 'legendary' },
   { name: 'The Singularity', spaceLevel: 6, power: 5000, health: 4000, abilities: '{"attack": "universe", "defense": "eternal"}', rewardPoints: 3000, rewardCrystals: 100, rarity: 'legendary' },
+  { name: 'Chrono Hydra', spaceLevel: 7, power: 7800, health: 6200, abilities: '{"attack": "rewind-bite", "defense": "time-shell"}', rewardPoints: 4200, rewardCrystals: 130, rarity: 'legendary' },
+  { name: 'Rift Warlord', spaceLevel: 7, power: 8600, health: 7000, abilities: '{"attack": "rift-slash", "defense": "phase-guard"}', rewardPoints: 4700, rewardCrystals: 150, rarity: 'mythic' },
+  { name: 'Forge Behemoth', spaceLevel: 8, power: 12000, health: 9500, abilities: '{"attack": "stellar-hammer", "defense": "plasma-plating"}', rewardPoints: 6200, rewardCrystals: 180, rarity: 'mythic' },
+  { name: 'Nova Architect', spaceLevel: 8, power: 13200, health: 10200, abilities: '{"attack": "sunlance", "defense": "gravity-weave"}', rewardPoints: 6900, rewardCrystals: 210, rarity: 'mythic' },
+  { name: 'Nexus Sentinel', spaceLevel: 9, power: 17500, health: 13000, abilities: '{"attack": "gate-breaker", "defense": "eternal-grid"}', rewardPoints: 8400, rewardCrystals: 250, rarity: 'mythic' },
+  { name: 'Epoch Tyrant', spaceLevel: 9, power: 19000, health: 14500, abilities: '{"attack": "era-crush", "defense": "fate-armor"}', rewardPoints: 9100, rewardCrystals: 280, rarity: 'mythic' },
+  { name: 'Omniverse Arbiter', spaceLevel: 10, power: 25000, health: 19000, abilities: '{"attack": "reality-collapse", "defense": "absolute-barrier"}', rewardPoints: 12000, rewardCrystals: 350, rarity: 'mythic' },
+  { name: 'Zero Dawn Entity', spaceLevel: 10, power: 28500, health: 22000, abilities: '{"attack": "origin-flare", "defense": "void-genesis"}', rewardPoints: 14500, rewardCrystals: 420, rarity: 'mythic' },
 ];
 
 // NPC warriors for each space (computer-controlled opponents)
@@ -69,6 +81,14 @@ const npcWarriorsData = [
   { username: 'npc_singularity_avatar', displayName: 'Singularity Avatar', level: 35, power: 5500, health: 4000, maxHealth: 4000, spaceLevel: 6, wins: 200, losses: 30, email: 'npc16@shoorveer.game', password: 'npc_secret_16' },
   { username: 'npc_universe_devourer', displayName: 'Universe Devourer', level: 38, power: 6500, health: 4500, maxHealth: 4500, spaceLevel: 6, wins: 250, losses: 20, email: 'npc17@shoorveer.game', password: 'npc_secret_17' },
   { username: 'npc_cosmic_overlord', displayName: 'Cosmic Overlord', level: 40, power: 7000, health: 5000, maxHealth: 5000, spaceLevel: 6, wins: 300, losses: 10, email: 'npc18@shoorveer.game', password: 'npc_secret_18' },
+  { username: 'npc_time_reaver', displayName: 'Time Reaver', level: 44, power: 8600, health: 6400, maxHealth: 6400, spaceLevel: 7, wins: 360, losses: 18, email: 'npc19@shoorveer.game', password: 'npc_secret_19' },
+  { username: 'npc_chrono_paladin', displayName: 'Chrono Paladin', level: 46, power: 9100, health: 6800, maxHealth: 6800, spaceLevel: 7, wins: 400, losses: 15, email: 'npc20@shoorveer.game', password: 'npc_secret_20' },
+  { username: 'npc_forge_harbinger', displayName: 'Forge Harbinger', level: 52, power: 12800, health: 9800, maxHealth: 9800, spaceLevel: 8, wins: 470, losses: 20, email: 'npc21@shoorveer.game', password: 'npc_secret_21' },
+  { username: 'npc_helio_crusader', displayName: 'Helio Crusader', level: 55, power: 13600, health: 10600, maxHealth: 10600, spaceLevel: 8, wins: 510, losses: 16, email: 'npc22@shoorveer.game', password: 'npc_secret_22' },
+  { username: 'npc_nexus_emperor', displayName: 'Nexus Emperor', level: 63, power: 17800, health: 13400, maxHealth: 13400, spaceLevel: 9, wins: 640, losses: 18, email: 'npc23@shoorveer.game', password: 'npc_secret_23' },
+  { username: 'npc_fate_blade', displayName: 'Fate Blade', level: 66, power: 18800, health: 14400, maxHealth: 14400, spaceLevel: 9, wins: 690, losses: 14, email: 'npc24@shoorveer.game', password: 'npc_secret_24' },
+  { username: 'npc_core_ascendant', displayName: 'Core Ascendant', level: 78, power: 25800, health: 19600, maxHealth: 19600, spaceLevel: 10, wins: 900, losses: 12, email: 'npc25@shoorveer.game', password: 'npc_secret_25' },
+  { username: 'npc_origin_prime', displayName: 'Origin Prime', level: 82, power: 28600, health: 22400, maxHealth: 22400, spaceLevel: 10, wins: 980, losses: 8, email: 'npc26@shoorveer.game', password: 'npc_secret_26' },
 ];
 
 const activitiesData = [
@@ -295,6 +315,76 @@ const activitiesData = [
     rewardPoints: 120,
     rewardCrystals: 5,
     timeLimit: 120
+  },
+  {
+    type: 'riddle',
+    title: 'Chrono Cipher',
+    description: 'Decode paradox riddles from fractured timelines.',
+    difficulty: 'hard',
+    spaceLevel: 7,
+    data: JSON.stringify({
+      questions: [
+        { question: 'What comes once in a minute, twice in a moment, but never in a thousand years?', answer: 'm', points: 35, explanation: 'The letter m appears in minute and moment, not in thousand years.' },
+        { question: 'If you feed me I grow, if you give me a drink I die. What am I?', answer: 'fire', points: 35, explanation: 'Fire grows with fuel and dies with water.' },
+        { question: 'I can be cracked, made, told, and played. What am I?', answer: 'joke', points: 35, explanation: 'A joke can be cracked, made, told, and played on someone.' },
+      ],
+      passThreshold: 75
+    }),
+    rewardPoints: 220,
+    rewardCrystals: 8,
+    timeLimit: 120
+  },
+  {
+    type: 'math',
+    title: 'Forge Calculus',
+    description: 'High-pressure combat math from the Celestial Forge.',
+    difficulty: 'hard',
+    spaceLevel: 8,
+    data: JSON.stringify({
+      questions: [
+        { question: 'If power grows by 12% each wave starting at 5000 for 3 waves, what is final power (rounded)?', answer: '7025', points: 40, explanation: '5000 × 1.12³ ≈ 7024.64, rounded to 7025.' },
+        { question: 'A shield has 18,000 durability and takes 750 damage per hit. How many full hits can it absorb?', answer: '24', points: 35, explanation: '18000 / 750 = 24 full hits.' },
+        { question: 'What is 2^10 + 3^7?', answer: '3211', points: 40, explanation: '2^10 = 1024 and 3^7 = 2187, sum is 3211.' },
+      ],
+      passThreshold: 85
+    }),
+    rewardPoints: 280,
+    rewardCrystals: 10,
+    timeLimit: 140
+  },
+  {
+    type: 'pattern',
+    title: 'Nexus Sequence Matrix',
+    description: 'Master recursive sequences from the Eternal Nexus.',
+    difficulty: 'hard',
+    spaceLevel: 9,
+    data: JSON.stringify({
+      questions: [
+        { question: 'Complete: 5, 11, 23, 47, 95, __', answer: '191', points: 45, explanation: 'Each term doubles then adds 1.' },
+        { question: 'Complete: 3, 9, 27, 81, __', answer: '243', points: 35, explanation: 'Multiply by 3 each step.' },
+        { question: 'Complete: 2, 5, 10, 17, 26, __', answer: '37', points: 40, explanation: 'Add odd numbers: +3, +5, +7, +9, +11.' },
+      ],
+      passThreshold: 90
+    }),
+    rewardPoints: 320,
+    rewardCrystals: 12,
+    timeLimit: 150
+  },
+  {
+    type: 'physics',
+    title: 'Omniverse Collapse Run',
+    description: 'Survive unstable gravity wells at the Omniverse Core.',
+    difficulty: 'hard',
+    spaceLevel: 10,
+    data: JSON.stringify({
+      description: 'Extreme gravity, rapid orbit shifts, and singularity pull.',
+      gravityStrength: 1.7,
+      planetCount: 9,
+      minScore: 600
+    }),
+    rewardPoints: 420,
+    rewardCrystals: 18,
+    timeLimit: 160
   },
 ];
 

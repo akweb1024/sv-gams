@@ -3,6 +3,279 @@ const prisma = require('../utils/prisma');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
+const BOSS_COOLDOWN_MINUTES = 20;
+const FIRST_CLEAR_BONUS_POINTS = 1500;
+const FIRST_CLEAR_BONUS_CRYSTALS = 25;
+const LAST_WEEK_REWARD_BY_RANK = {
+  1: { points: 5000, crystals: 120, title: 'Champion' },
+  2: { points: 3000, crystals: 80, title: 'Runner-up' },
+  3: { points: 1800, crystals: 50, title: 'Elite Contender' }
+};
+
+async function getMaxSpaceLevel() {
+  const maxSpace = await prisma.space.aggregate({
+    _max: { level: true }
+  });
+  return maxSpace._max.level || 1;
+}
+
+function calculateLevelProgression({ currentExperience, experienceGain }) {
+  const newExperience = currentExperience + experienceGain;
+  const newLevel = Math.floor(Math.sqrt(newExperience / 100)) + 1;
+  const newPower = 100 + (newLevel - 1) * 20;
+  const newMaxHealth = 100 + (newLevel - 1) * 15;
+  return { newExperience, newLevel, newPower, newMaxHealth };
+}
+
+function getBossCooldownStatus(lastBattleAt) {
+  if (!lastBattleAt) {
+    return { isOnCooldown: false, remainingSeconds: 0, nextAvailableAt: null };
+  }
+
+  const cooldownMs = BOSS_COOLDOWN_MINUTES * 60 * 1000;
+  const nextAvailableMs = new Date(lastBattleAt).getTime() + cooldownMs;
+  const nowMs = Date.now();
+  const remainingMs = nextAvailableMs - nowMs;
+
+  if (remainingMs <= 0) {
+    return { isOnCooldown: false, remainingSeconds: 0, nextAvailableAt: null };
+  }
+
+  return {
+    isOnCooldown: true,
+    remainingSeconds: Math.ceil(remainingMs / 1000),
+    nextAvailableAt: new Date(nextAvailableMs)
+  };
+}
+
+function getWeekStartUtc(date = new Date()) {
+  const current = new Date(date);
+  const utcDay = current.getUTCDay();
+  const daysSinceMonday = (utcDay + 6) % 7;
+  const monday = new Date(Date.UTC(
+    current.getUTCFullYear(),
+    current.getUTCMonth(),
+    current.getUTCDate() - daysSinceMonday,
+    0, 0, 0, 0
+  ));
+  return monday;
+}
+
+function getSeasonWindow(season) {
+  const thisWeekStart = getWeekStartUtc();
+  if (season === 'week') {
+    return { start: thisWeekStart, end: null };
+  }
+  if (season === 'last_week') {
+    const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    return { start: lastWeekStart, end: thisWeekStart };
+  }
+  return { start: null, end: null };
+}
+
+function getAdminUsernames() {
+  return (process.env.ADMIN_USERNAMES || '')
+    .split(',')
+    .map((username) => username.trim())
+    .filter(Boolean);
+}
+
+function isAdminUser(user) {
+  const admins = getAdminUsernames();
+  return admins.includes(user.username);
+}
+
+async function buildBossLeaderboardForSeason(season) {
+  const seasonWindow = getSeasonWindow(season);
+  const bossWins = await prisma.battle.findMany({
+    where: {
+      battleType: 'pve_boss',
+      winnerId: { not: null },
+      ...(seasonWindow.start
+        ? {
+            createdAt: {
+              gte: seasonWindow.start,
+              ...(seasonWindow.end ? { lt: seasonWindow.end } : {})
+            }
+          }
+        : {})
+    },
+    select: {
+      attackerId: true,
+      winnerId: true,
+      spaceLevel: true,
+      rounds: true,
+      pointsEarned: true,
+      createdAt: true
+    }
+  });
+
+  const userStatsMap = new Map();
+
+  for (const battle of bossWins) {
+    if (battle.winnerId !== battle.attackerId) continue;
+
+    if (!userStatsMap.has(battle.attackerId)) {
+      userStatsMap.set(battle.attackerId, {
+        userId: battle.attackerId,
+        totalBossClears: 0,
+        totalBossPoints: 0,
+        fastestClearRounds: Number.POSITIVE_INFINITY,
+        firstClearBySpace: new Map()
+      });
+    }
+
+    const stats = userStatsMap.get(battle.attackerId);
+    stats.totalBossClears += 1;
+    stats.totalBossPoints += battle.pointsEarned || 0;
+    stats.fastestClearRounds = Math.min(stats.fastestClearRounds, battle.rounds || Number.POSITIVE_INFINITY);
+
+    const prevFirstClear = stats.firstClearBySpace.get(battle.spaceLevel);
+    if (!prevFirstClear || new Date(battle.createdAt) < new Date(prevFirstClear)) {
+      stats.firstClearBySpace.set(battle.spaceLevel, battle.createdAt);
+    }
+  }
+
+  const userIds = Array.from(userStatsMap.keys());
+  if (userIds.length === 0) {
+    return { seasonWindow, bossLeaderboard: [] };
+  }
+
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: {
+      id: true,
+      username: true,
+      displayName: true,
+      level: true,
+      power: true,
+      spaceLevel: true
+    }
+  });
+  const userById = new Map(users.map((user) => [user.id, user]));
+
+  const bossLeaderboard = Array.from(userStatsMap.values())
+    .map((stats) => {
+      const user = userById.get(stats.userId);
+      if (!user) return null;
+
+      const firstClearTimestamps = Array.from(stats.firstClearBySpace.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([spaceLevel, firstClearAt]) => ({
+          spaceLevel,
+          firstClearAt
+        }));
+
+      return {
+        userId: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        level: user.level,
+        power: user.power,
+        spaceLevel: user.spaceLevel,
+        totalBossClears: stats.totalBossClears,
+        totalBossPoints: stats.totalBossPoints,
+        fastestClearRounds: Number.isFinite(stats.fastestClearRounds) ? stats.fastestClearRounds : null,
+        firstClearTimestamps
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.totalBossClears !== a.totalBossClears) return b.totalBossClears - a.totalBossClears;
+      if (b.totalBossPoints !== a.totalBossPoints) return b.totalBossPoints - a.totalBossPoints;
+      if ((a.fastestClearRounds ?? Number.POSITIVE_INFINITY) !== (b.fastestClearRounds ?? Number.POSITIVE_INFINITY)) {
+        return (a.fastestClearRounds ?? Number.POSITIVE_INFINITY) - (b.fastestClearRounds ?? Number.POSITIVE_INFINITY);
+      }
+      return (b.level || 0) - (a.level || 0);
+    })
+    .slice(0, 50);
+
+  return { seasonWindow, bossLeaderboard };
+}
+
+async function archiveLastWeekRewards({ dryRun = false } = {}) {
+  const season = 'last_week';
+  const { seasonWindow, bossLeaderboard } = await buildBossLeaderboardForSeason(season);
+  const seasonRewards = [];
+
+  const rewardCandidates = bossLeaderboard.slice(0, 3);
+  for (let index = 0; index < rewardCandidates.length; index++) {
+    const rank = index + 1;
+    const rewardConfig = LAST_WEEK_REWARD_BY_RANK[rank];
+    if (!rewardConfig) continue;
+
+    const winner = rewardCandidates[index];
+    const archiveMarker = `season:last_week:${seasonWindow.start.toISOString()}:rank:${rank}`;
+    const existingArchive = await prisma.battle.findFirst({
+      where: {
+        battleType: 'season_reward',
+        attackerId: winner.userId,
+        defenderId: archiveMarker
+      },
+      select: { id: true }
+    });
+
+    const alreadyArchived = !!existingArchive;
+
+    if (!alreadyArchived && !dryRun) {
+      await prisma.$transaction([
+        prisma.user.update({
+          where: { id: winner.userId },
+          data: {
+            points: { increment: rewardConfig.points },
+            crystals: { increment: rewardConfig.crystals }
+          }
+        }),
+        prisma.battle.create({
+          data: {
+            attackerId: winner.userId,
+            defenderId: archiveMarker,
+            spaceLevel: winner.spaceLevel || 1,
+            winnerId: winner.userId,
+            battleType: 'season_reward',
+            attackerPower: 0,
+            defenderPower: 0,
+            attackerHealth: 0,
+            defenderHealth: 0,
+            rounds: 0,
+            log: JSON.stringify({
+              season: 'last_week',
+              weekStart: seasonWindow.start,
+              weekEnd: seasonWindow.end,
+              rank,
+              title: rewardConfig.title,
+              rewardPoints: rewardConfig.points,
+              rewardCrystals: rewardConfig.crystals
+            }),
+            pointsEarned: rewardConfig.points,
+            rewardType: 'seasonal_reward',
+            rewardAmount: rewardConfig.points,
+            status: 'completed',
+            endedAt: new Date()
+          }
+        })
+      ]);
+    }
+
+    seasonRewards.push({
+      userId: winner.userId,
+      username: winner.username,
+      rank,
+      title: rewardConfig.title,
+      points: rewardConfig.points,
+      crystals: rewardConfig.crystals,
+      archived: alreadyArchived || !dryRun
+    });
+  }
+
+  return {
+    season,
+    windowStart: seasonWindow.start,
+    windowEnd: seasonWindow.end,
+    bossLeaderboard,
+    seasonRewards
+  };
+}
 
 // Get all spaces
 router.get('/spaces', authMiddleware, async (req, res) => {
@@ -14,15 +287,65 @@ router.get('/spaces', authMiddleware, async (req, res) => {
     const user = req.user;
 
     // Mark which spaces are unlocked for the user
-    const spacesWithStatus = spaces.map(space => ({
-      ...space,
-      unlocked: user.spaceLevel >= space.level,
-      canEnter: user.power >= space.minPower && user.level >= space.minLevel
-    }));
+    const spacesWithStatus = spaces.map(space => {
+      const unlocked = user.spaceLevel >= space.level;
+      const canEnter = user.power >= space.minPower && user.level >= space.minLevel;
+      const missingPower = Math.max(0, space.minPower - user.power);
+      const missingLevel = Math.max(0, space.minLevel - user.level);
+
+      return {
+        ...space,
+        unlocked,
+        canEnter,
+        missingPower,
+        missingLevel
+      };
+    });
 
     res.json({ spaces: spacesWithStatus });
   } catch (error) {
     console.error('Get spaces error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Admin status for privileged UI controls
+router.get('/admin/status', authMiddleware, async (req, res) => {
+  try {
+    res.json({
+      isAdmin: isAdminUser(req.user),
+      username: req.user.username
+    });
+  } catch (error) {
+    console.error('Admin status error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get world progression summary
+router.get('/world-summary', authMiddleware, async (req, res) => {
+  try {
+    const user = req.user;
+    const spaces = await prisma.space.findMany({ orderBy: { level: 'asc' } });
+    const highestUnlocked = spaces.filter((space) => user.spaceLevel >= space.level).length;
+    const totalSpaces = spaces.length;
+    const nextSpace = spaces.find((space) => space.level > user.spaceLevel) || null;
+
+    res.json({
+      summary: {
+        totalSpaces,
+        unlockedSpaces: highestUnlocked,
+        completionPercent: totalSpaces > 0 ? Math.round((highestUnlocked / totalSpaces) * 100) : 0,
+        nextSpace: nextSpace ? {
+          level: nextSpace.level,
+          name: nextSpace.name,
+          minPower: nextSpace.minPower,
+          minLevel: nextSpace.minLevel
+        } : null
+      }
+    });
+  } catch (error) {
+    console.error('World summary error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -44,6 +367,78 @@ router.get('/spaces/:level/species', authMiddleware, async (req, res) => {
     res.json({ species });
   } catch (error) {
     console.error('Get species error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get boss details for a space
+router.get('/spaces/:level/boss', authMiddleware, async (req, res) => {
+  try {
+    const level = parseInt(req.params.level);
+    const user = req.user;
+
+    if (user.spaceLevel < level) {
+      return res.status(403).json({ message: 'Space not unlocked yet' });
+    }
+
+    const baseBoss = await prisma.species.findFirst({
+      where: { spaceLevel: level },
+      orderBy: [{ power: 'desc' }, { health: 'desc' }]
+    });
+
+    if (!baseBoss) {
+      return res.status(404).json({ message: 'No boss available for this space yet' });
+    }
+
+    const bossPower = Math.floor(baseBoss.power * 1.4);
+    const bossHealth = Math.floor(baseBoss.health * 1.5);
+    const bossRewardPoints = Math.floor(baseBoss.rewardPoints * 2.5);
+    const bossRewardCrystals = Math.max(1, Math.floor(baseBoss.rewardCrystals * 2));
+    const lastBossBattle = await prisma.battle.findFirst({
+      where: {
+        attackerId: user.id,
+        spaceLevel: level,
+        battleType: 'pve_boss'
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+    const firstClear = await prisma.battle.findFirst({
+      where: {
+        attackerId: user.id,
+        winnerId: user.id,
+        spaceLevel: level,
+        battleType: 'pve_boss'
+      },
+      select: { id: true }
+    });
+    const cooldown = getBossCooldownStatus(lastBossBattle?.createdAt || null);
+
+    res.json({
+      boss: {
+        id: baseBoss.id,
+        name: `${baseBoss.name} Prime`,
+        spaceLevel: baseBoss.spaceLevel,
+        power: bossPower,
+        health: bossHealth,
+        rarity: 'boss',
+        rewardPoints: bossRewardPoints,
+        rewardCrystals: bossRewardCrystals,
+        cooldownMinutes: BOSS_COOLDOWN_MINUTES,
+        cooldown: {
+          isOnCooldown: cooldown.isOnCooldown,
+          remainingSeconds: cooldown.remainingSeconds,
+          nextAvailableAt: cooldown.nextAvailableAt
+        },
+        firstClearBonus: {
+          available: !firstClear,
+          points: FIRST_CLEAR_BONUS_POINTS,
+          crystals: FIRST_CLEAR_BONUS_CRYSTALS
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get boss error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -230,13 +625,16 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
 
     // Update user stats
     const experienceGain = playerWon ? pointsEarned * 2 : pointsEarned;
-    const newExperience = user.experience + experienceGain;
-    const newLevel = Math.floor(Math.sqrt(newExperience / 100)) + 1;
-    const newPower = 100 + (newLevel - 1) * 20;
-    const newMaxHealth = 100 + (newLevel - 1) * 15;
+    const progression = calculateLevelProgression({
+      currentExperience: user.experience,
+      experienceGain
+    });
+    const { newExperience, newLevel, newPower, newMaxHealth } = progression;
 
     // Check for level up
-    const spaceLevelUp = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+    const maxSpaceLevel = await getMaxSpaceLevel();
+    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -347,6 +745,215 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
   }
 });
 
+// Battle boss in a space
+router.post('/battle/boss', authMiddleware, async (req, res) => {
+  try {
+    const { spaceLevel } = req.body;
+    const user = req.user;
+
+    if (!spaceLevel || !Number.isInteger(spaceLevel) || spaceLevel <= 0) {
+      return res.status(400).json({ message: 'Valid space level required' });
+    }
+
+    if (user.spaceLevel < spaceLevel) {
+      return res.status(403).json({ message: 'Space not unlocked' });
+    }
+
+    const baseBoss = await prisma.species.findFirst({
+      where: { spaceLevel },
+      orderBy: [{ power: 'desc' }, { health: 'desc' }]
+    });
+
+    if (!baseBoss) {
+      return res.status(404).json({ message: 'No boss available for this space yet' });
+    }
+
+    const lastBossBattle = await prisma.battle.findFirst({
+      where: {
+        attackerId: user.id,
+        spaceLevel,
+        battleType: 'pve_boss'
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+    const cooldown = getBossCooldownStatus(lastBossBattle?.createdAt || null);
+    if (cooldown.isOnCooldown) {
+      return res.status(429).json({
+        message: 'Boss is recovering. Please wait before re-challenging.',
+        cooldown: {
+          remainingSeconds: cooldown.remainingSeconds,
+          nextAvailableAt: cooldown.nextAvailableAt,
+          cooldownMinutes: BOSS_COOLDOWN_MINUTES
+        }
+      });
+    }
+
+    const inventory = await prisma.inventoryItem.findMany({
+      where: { userId: user.id }
+    });
+
+    let totalPower = user.power;
+    let totalHealth = user.health;
+    inventory.forEach(item => {
+      totalPower += item.powerBonus * item.quantity;
+      totalHealth += item.healthBonus * item.quantity;
+    });
+
+    const bossName = `${baseBoss.name} Prime`;
+    const bossPower = Math.floor(baseBoss.power * 1.4);
+    const bossHealth = Math.floor(baseBoss.health * 1.5);
+
+    const battleLog = [];
+    let attackerHealth = totalHealth;
+    let defenderHealth = bossHealth;
+    let round = 0;
+
+    while (attackerHealth > 0 && defenderHealth > 0 && round < 60) {
+      round++;
+
+      const attackerDamage = Math.floor(totalPower * (0.75 + Math.random() * 0.35));
+      defenderHealth -= attackerDamage;
+      battleLog.push({
+        round,
+        actor: 'player',
+        action: 'attack',
+        damage: attackerDamage,
+        defenderHealth: Math.max(0, defenderHealth),
+        attackerHealth
+      });
+
+      if (defenderHealth <= 0) break;
+
+      const defenderDamage = Math.floor(bossPower * (0.85 + Math.random() * 0.35));
+      attackerHealth -= defenderDamage;
+      battleLog.push({
+        round,
+        actor: 'boss',
+        action: 'attack',
+        damage: defenderDamage,
+        attackerHealth: Math.max(0, attackerHealth),
+        defenderHealth
+      });
+    }
+
+    const playerWon = defenderHealth <= 0;
+
+    const space = await prisma.space.findUnique({ where: { level: spaceLevel } });
+    const multiplier = space?.rewardMultiplier || 1;
+    const pointsEarnedBase = playerWon
+      ? Math.floor(baseBoss.rewardPoints * multiplier * 2.5 * (0.95 + Math.random() * 0.2))
+      : Math.floor(baseBoss.rewardPoints * multiplier * 0.2);
+    const crystalsEarnedBase = playerWon ? Math.max(1, Math.floor(baseBoss.rewardCrystals * 2.2)) : 0;
+    const alreadyClearedBefore = await prisma.battle.findFirst({
+      where: {
+        attackerId: user.id,
+        winnerId: user.id,
+        spaceLevel,
+        battleType: 'pve_boss'
+      },
+      select: { id: true }
+    });
+    const firstClearApplied = playerWon && !alreadyClearedBefore;
+    const pointsEarned = firstClearApplied ? pointsEarnedBase + FIRST_CLEAR_BONUS_POINTS : pointsEarnedBase;
+    const crystalsEarned = firstClearApplied ? crystalsEarnedBase + FIRST_CLEAR_BONUS_CRYSTALS : crystalsEarnedBase;
+    const experienceGain = playerWon ? pointsEarned * 3 : pointsEarned;
+
+    const progression = calculateLevelProgression({
+      currentExperience: user.experience,
+      experienceGain
+    });
+    const { newExperience, newLevel, newPower, newMaxHealth } = progression;
+    const maxSpaceLevel = await getMaxSpaceLevel();
+    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        experience: newExperience,
+        level: newLevel,
+        power: newPower,
+        maxHealth: newMaxHealth,
+        health: newMaxHealth,
+        points: { increment: pointsEarned },
+        crystals: { increment: crystalsEarned },
+        spaceLevel: spaceLevelUp,
+        wins: playerWon ? { increment: 1 } : undefined,
+        losses: !playerWon ? { increment: 1 } : undefined
+      },
+      select: {
+        id: true, username: true, level: true, power: true, health: true,
+        maxHealth: true, points: true, crystals: true, spaceLevel: true,
+        wins: true, losses: true, experience: true
+      }
+    });
+
+    await prisma.battle.create({
+      data: {
+        attackerId: user.id,
+        defenderId: baseBoss.id,
+        spaceLevel,
+        winnerId: playerWon ? user.id : null,
+        battleType: 'pve_boss',
+        attackerPower: totalPower,
+        defenderPower: bossPower,
+        attackerHealth: totalHealth,
+        defenderHealth: bossHealth,
+        rounds: round,
+        log: JSON.stringify(battleLog),
+        pointsEarned,
+        rewardType: crystalsEarned > 0 ? 'points_and_crystals' : 'points',
+        rewardAmount: pointsEarned,
+        status: 'completed',
+        endedAt: new Date()
+      }
+    });
+
+    let itemDrop = null;
+    if (playerWon) {
+      const rarity = Math.random() < 0.7 ? 'epic' : 'legendary';
+      const item = rarity === 'legendary'
+        ? { name: `${bossName} Core`, type: 'artifact', power: 120 + spaceLevel * 25, health: 150 + spaceLevel * 20 }
+        : { name: `${bossName} Sigil`, type: 'artifact', power: 70 + spaceLevel * 18, health: 90 + spaceLevel * 15 };
+
+      itemDrop = await prisma.inventoryItem.create({
+        data: {
+          userId: user.id,
+          itemName: item.name,
+          itemType: item.type,
+          rarity,
+          powerBonus: item.power,
+          healthBonus: item.health,
+          quantity: 1
+        }
+      });
+    }
+
+    res.json({
+      mode: 'boss',
+      opponent: bossName,
+      result: playerWon ? 'victory' : 'defeat',
+      battleLog,
+      rounds: round,
+      rewards: {
+        points: pointsEarned,
+        crystals: crystalsEarned,
+        experience: experienceGain,
+        itemDrop,
+        firstClearBonus: firstClearApplied
+          ? { points: FIRST_CLEAR_BONUS_POINTS, crystals: FIRST_CLEAR_BONUS_CRYSTALS }
+          : null
+      },
+      user: updatedUser,
+      leveledUp: newLevel > user.level
+    });
+  } catch (error) {
+    console.error('Battle boss error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Battle with NPC
 router.post('/battle/npc', authMiddleware, async (req, res) => {
   try {
@@ -441,11 +1048,14 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
 
     // Update user stats
     const experienceGain = playerWon ? pointsEarned * 2 : pointsEarned;
-    const newExperience = user.experience + experienceGain;
-    const newLevel = Math.floor(Math.sqrt(newExperience / 100)) + 1;
-    const newPower = 100 + (newLevel - 1) * 20;
-    const newMaxHealth = 100 + (newLevel - 1) * 15;
-    const spaceLevelUp = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+    const progression = calculateLevelProgression({
+      currentExperience: user.experience,
+      experienceGain
+    });
+    const { newExperience, newLevel, newPower, newMaxHealth } = progression;
+    const maxSpaceLevel = await getMaxSpaceLevel();
+    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
+    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -581,6 +1191,53 @@ router.get('/leaderboard', authMiddleware, async (req, res) => {
     res.json({ leaderboard: topPlayers });
   } catch (error) {
     console.error('Leaderboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get global boss leaderboard
+router.get('/leaderboard/boss', authMiddleware, async (req, res) => {
+  try {
+    const season = ['all', 'week', 'last_week'].includes(req.query.season) ? req.query.season : 'all';
+    if (season === 'last_week') {
+      const archived = await archiveLastWeekRewards();
+      return res.json(archived);
+    }
+
+    const { seasonWindow, bossLeaderboard } = await buildBossLeaderboardForSeason(season);
+    res.json({
+      bossLeaderboard,
+      season,
+      windowStart: seasonWindow.start,
+      windowEnd: seasonWindow.end,
+      seasonRewards: []
+    });
+  } catch (error) {
+    console.error('Boss leaderboard error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Admin only: re-run last week archive and reward payouts
+router.post('/leaderboard/boss/archive/rerun', authMiddleware, async (req, res) => {
+  try {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({
+        message: 'Admin access required. Set ADMIN_USERNAMES env to allow this action.'
+      });
+    }
+
+    const dryRun = req.query.dry_run === 'true' || req.body?.dryRun === true;
+    const result = await archiveLastWeekRewards({ dryRun });
+
+    res.json({
+      message: dryRun
+        ? 'Dry-run complete. No payouts written.'
+        : 'Last-week archive rerun complete.',
+      ...result
+    });
+  } catch (error) {
+    console.error('Boss archive rerun error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
