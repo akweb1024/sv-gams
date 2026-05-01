@@ -24,14 +24,42 @@ function ActivityPlay() {
   const timerRef = useRef(null)
   const canvasRef = useRef(null)
   const gameLoopRef = useRef(null)
+  const physicsCleanupRef = useRef(null)
 
   useEffect(() => {
     fetchActivity()
     return () => {
       clearInterval(timerRef.current)
       cancelAnimationFrame(gameLoopRef.current)
+      if (physicsCleanupRef.current) {
+        physicsCleanupRef.current()
+        physicsCleanupRef.current = null
+      }
     }
   }, [id])
+
+  useEffect(() => {
+    if (!started || finished) return
+    if (!activity) return
+    if (activity.type !== 'physics') return
+    if (!canvasRef.current) return
+
+    if (physicsCleanupRef.current) {
+      physicsCleanupRef.current()
+      physicsCleanupRef.current = null
+    }
+
+    const cleanup = initPhysicsGame()
+    physicsCleanupRef.current = typeof cleanup === 'function' ? cleanup : null
+
+    return () => {
+      if (physicsCleanupRef.current) {
+        physicsCleanupRef.current()
+        physicsCleanupRef.current = null
+      }
+      cancelAnimationFrame(gameLoopRef.current)
+    }
+  }, [started, finished, activity?.type, activity?.id])
 
   const fetchActivity = async () => {
     try {
@@ -51,7 +79,6 @@ function ActivityPlay() {
   const startActivity = () => {
     setStarted(true)
     if (activity.type === 'memory') initMemoryGame()
-    if (activity.type === 'physics') initPhysicsGame()
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
