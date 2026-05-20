@@ -42,6 +42,9 @@ model User {
   tradesSent        Trade[]          @relation("TradeSender")
   tradesReceived    Trade[]          @relation("TradeReceiver")
 
+  @@index([points, level])
+  @@index([isNpc, spaceLevel])
+  @@index([isNpc, lastLogin])
   @@map("users")
 }
 
@@ -87,6 +90,9 @@ model Battle {
 
   attacker User @relation("AttackerBattles", fields: [attackerId], references: [id])
 
+  @@index([battleType, winnerId, createdAt])
+  @@index([attackerId, battleType, spaceLevel])
+  @@index([battleType, attackerId, winnerId, spaceLevel, createdAt])
   @@map("battles")
 }
 
@@ -138,6 +144,8 @@ model Trade {
   sender   User @relation("TradeSender", fields: [senderId], references: [id])
   receiver User @relation("TradeReceiver", fields: [receiverId], references: [id])
 
+  @@index([senderId, status])
+  @@index([receiverId, status])
   @@map("trades")
 }
 
@@ -181,6 +189,7 @@ model Activity {
   timeLimit      Int     @default(60) // seconds
   isActive       Boolean @default(true)
 
+  @@index([spaceLevel, isActive])
   @@map("activities")
 }
 
@@ -195,5 +204,7 @@ model UserActivity {
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 
+  @@index([userId, activityId])
+  @@index([userId, completedAt])
   @@map("user_activities")
 }

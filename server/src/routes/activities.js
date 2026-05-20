@@ -112,7 +112,13 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Space not unlocked' });
     }
 
-    const activityData = JSON.parse(activity.data || '{}');
+    let activityData;
+    try {
+      activityData = JSON.parse(activity.data || '{}');
+    } catch (parseError) {
+      console.error('Invalid activity data JSON:', parseError);
+      return res.status(500).json({ message: 'Invalid activity configuration' });
+    }
     let score = 0;
     let correctCount = 0;
     const results = [];

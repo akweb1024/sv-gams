@@ -138,12 +138,36 @@ router.post('/leave', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'You are not in an alliance' });
     }
     
-    // If leader is leaving, delete alliance
+    // If leader is leaving, transfer leadership or delete alliance
     if (membership.role === 'leader') {
-      await prisma.alliance.delete({
-        where: { id: membership.allianceId }
+      const otherMembers = await prisma.allianceMember.findMany({
+        where: {
+          allianceId: membership.allianceId,
+          userId: { not: user.id }
+        },
+        orderBy: { joinedAt: 'asc' },
+        take: 1
       });
-      return res.json({ message: 'Alliance disbanded as leader left' });
+
+      if (otherMembers.length > 0) {
+        await prisma.$transaction([
+          prisma.allianceMember.delete({ where: { id: membership.id } }),
+          prisma.allianceMember.update({
+            where: { id: otherMembers[0].id },
+            data: { role: 'leader' }
+          }),
+          prisma.alliance.update({
+            where: { id: membership.allianceId },
+            data: { leaderId: otherMembers[0].userId }
+          })
+        ]);
+        return res.json({ message: 'Leadership transferred to another member' });
+      } else {
+        await prisma.alliance.delete({
+          where: { id: membership.allianceId }
+        });
+        return res.json({ message: 'Alliance disbanded as leader was the only member' });
+      }
     }
     
     await prisma.allianceMember.delete({

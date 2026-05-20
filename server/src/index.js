@@ -5,15 +5,18 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 
 const prisma = require('./utils/prisma');
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const gameRoutes = require('./routes/game');
+const battleRoutes = require('./routes/battles');
 const allianceRoutes = require('./routes/alliance');
 const tradeRoutes = require('./routes/trade');
 const activityRoutes = require('./routes/activities');
+const leaderboardRoutes = require('./routes/leaderboard');
+const adminRoutes = require('./routes/admin');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,12 +46,42 @@ const io = new Server(server, {
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many authentication attempts, please try again later.' }
+});
+
+const battleLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many battle requests, please slow down.' }
+});
+
+app.use('/api/auth', authLimiter);
+app.use('/api/game/battle', battleLimiter);
+app.use('/api', apiLimiter);
+
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/game', gameRoutes);
+app.use('/api/game', battleRoutes);
 app.use('/api/alliance', allianceRoutes);
 app.use('/api/trade', tradeRoutes);
 app.use('/api/activities', activityRoutes);
+app.use('/api/game', leaderboardRoutes);
+app.use('/api', adminRoutes);
 
 // Socket.io for real-time features
 const connectedUsers = new Map(); // socketId -> { userId, username, spaceLevel }
@@ -146,10 +179,19 @@ io.on('connection', (socket) => {
   socket.on('space-chat', (data) => {
     const user = connectedUsers.get(socket.id);
     if (user) {
+      const message = typeof data?.message === 'string' ? data.message.trim().slice(0, 500) : '';
+      if (!message) return;
+      
+      const sanitizedMessage = message
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+
       io.to(`space-${user.spaceLevel}`).emit('chat-message', {
         userId: user.userId,
         username: user.username,
-        message: data.message,
+        message: sanitizedMessage,
         timestamp: new Date().toISOString()
       });
     }

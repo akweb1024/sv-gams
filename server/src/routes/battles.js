@@ -1,32 +1,12 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const prisma = require('../utils/prisma');
 const authMiddleware = require('../middleware/auth');
+const { simulateBattle, calculateLevelProgression, getMaxSpaceLevel, calculateSpaceLevelUp, getUserTotalStats } = require('../utils/battle');
 
 const router = express.Router();
 const BOSS_COOLDOWN_MINUTES = 20;
 const FIRST_CLEAR_BONUS_POINTS = 1500;
 const FIRST_CLEAR_BONUS_CRYSTALS = 25;
-const LAST_WEEK_REWARD_BY_RANK = {
-  1: { points: 5000, crystals: 120, title: 'Champion' },
-  2: { points: 3000, crystals: 80, title: 'Runner-up' },
-  3: { points: 1800, crystals: 50, title: 'Elite Contender' }
-};
-
-async function getMaxSpaceLevel() {
-  const maxSpace = await prisma.space.aggregate({
-    _max: { level: true }
-  });
-  return maxSpace._max.level || 1;
-}
-
-function calculateLevelProgression({ currentExperience, experienceGain }) {
-  const newExperience = currentExperience + experienceGain;
-  const newLevel = Math.floor(Math.sqrt(newExperience / 100)) + 1;
-  const newPower = 100 + (newLevel - 1) * 20;
-  const newMaxHealth = 100 + (newLevel - 1) * 15;
-  return { newExperience, newLevel, newPower, newMaxHealth };
-}
 
 function getBossCooldownStatus(lastBattleAt) {
   if (!lastBattleAt) {
@@ -49,244 +29,6 @@ function getBossCooldownStatus(lastBattleAt) {
   };
 }
 
-function getWeekStartUtc(date = new Date()) {
-  const current = new Date(date);
-  const utcDay = current.getUTCDay();
-  const daysSinceMonday = (utcDay + 6) % 7;
-  const monday = new Date(Date.UTC(
-    current.getUTCFullYear(),
-    current.getUTCMonth(),
-    current.getUTCDate() - daysSinceMonday,
-    0, 0, 0, 0
-  ));
-  return monday;
-}
-
-function getSeasonWindow(season) {
-  const thisWeekStart = getWeekStartUtc();
-  if (season === 'week') {
-    return { start: thisWeekStart, end: null };
-  }
-  if (season === 'last_week') {
-    const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { start: lastWeekStart, end: thisWeekStart };
-  }
-  return { start: null, end: null };
-}
-
-function getAdminUsernames() {
-  return (process.env.ADMIN_USERNAMES || '')
-    .split(',')
-    .map((username) => username.trim())
-    .filter(Boolean);
-}
-
-function isAdminUser(user) {
-  const admins = getAdminUsernames();
-  return admins.includes(user.username);
-}
-
-function requireAdmin(req, res, next) {
-  if (!isAdminUser(req.user)) {
-    return res.status(403).json({
-      message: 'Admin access required. Set ADMIN_USERNAMES env to allow this action.'
-    });
-  }
-  return next();
-}
-
-async function buildBossLeaderboardForSeason(season) {
-  const seasonWindow = getSeasonWindow(season);
-  const bossWins = await prisma.battle.findMany({
-    where: {
-      battleType: 'pve_boss',
-      winnerId: { not: null },
-      ...(seasonWindow.start
-        ? {
-            createdAt: {
-              gte: seasonWindow.start,
-              ...(seasonWindow.end ? { lt: seasonWindow.end } : {})
-            }
-          }
-        : {})
-    },
-    select: {
-      attackerId: true,
-      winnerId: true,
-      spaceLevel: true,
-      rounds: true,
-      pointsEarned: true,
-      createdAt: true
-    }
-  });
-
-  const userStatsMap = new Map();
-
-  for (const battle of bossWins) {
-    if (battle.winnerId !== battle.attackerId) continue;
-
-    if (!userStatsMap.has(battle.attackerId)) {
-      userStatsMap.set(battle.attackerId, {
-        userId: battle.attackerId,
-        totalBossClears: 0,
-        totalBossPoints: 0,
-        fastestClearRounds: Number.POSITIVE_INFINITY,
-        firstClearBySpace: new Map()
-      });
-    }
-
-    const stats = userStatsMap.get(battle.attackerId);
-    stats.totalBossClears += 1;
-    stats.totalBossPoints += battle.pointsEarned || 0;
-    stats.fastestClearRounds = Math.min(stats.fastestClearRounds, battle.rounds || Number.POSITIVE_INFINITY);
-
-    const prevFirstClear = stats.firstClearBySpace.get(battle.spaceLevel);
-    if (!prevFirstClear || new Date(battle.createdAt) < new Date(prevFirstClear)) {
-      stats.firstClearBySpace.set(battle.spaceLevel, battle.createdAt);
-    }
-  }
-
-  const userIds = Array.from(userStatsMap.keys());
-  if (userIds.length === 0) {
-    return { seasonWindow, bossLeaderboard: [] };
-  }
-
-  const users = await prisma.user.findMany({
-    where: { id: { in: userIds } },
-    select: {
-      id: true,
-      username: true,
-      displayName: true,
-      level: true,
-      power: true,
-      spaceLevel: true
-    }
-  });
-  const userById = new Map(users.map((user) => [user.id, user]));
-
-  const bossLeaderboard = Array.from(userStatsMap.values())
-    .map((stats) => {
-      const user = userById.get(stats.userId);
-      if (!user) return null;
-
-      const firstClearTimestamps = Array.from(stats.firstClearBySpace.entries())
-        .sort((a, b) => a[0] - b[0])
-        .map(([spaceLevel, firstClearAt]) => ({
-          spaceLevel,
-          firstClearAt
-        }));
-
-      return {
-        userId: user.id,
-        username: user.username,
-        displayName: user.displayName,
-        level: user.level,
-        power: user.power,
-        spaceLevel: user.spaceLevel,
-        totalBossClears: stats.totalBossClears,
-        totalBossPoints: stats.totalBossPoints,
-        fastestClearRounds: Number.isFinite(stats.fastestClearRounds) ? stats.fastestClearRounds : null,
-        firstClearTimestamps
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      if (b.totalBossClears !== a.totalBossClears) return b.totalBossClears - a.totalBossClears;
-      if (b.totalBossPoints !== a.totalBossPoints) return b.totalBossPoints - a.totalBossPoints;
-      if ((a.fastestClearRounds ?? Number.POSITIVE_INFINITY) !== (b.fastestClearRounds ?? Number.POSITIVE_INFINITY)) {
-        return (a.fastestClearRounds ?? Number.POSITIVE_INFINITY) - (b.fastestClearRounds ?? Number.POSITIVE_INFINITY);
-      }
-      return (b.level || 0) - (a.level || 0);
-    })
-    .slice(0, 50);
-
-  return { seasonWindow, bossLeaderboard };
-}
-
-async function archiveLastWeekRewards({ dryRun = false } = {}) {
-  const season = 'last_week';
-  const { seasonWindow, bossLeaderboard } = await buildBossLeaderboardForSeason(season);
-  const seasonRewards = [];
-
-  const rewardCandidates = bossLeaderboard.slice(0, 3);
-  for (let index = 0; index < rewardCandidates.length; index++) {
-    const rank = index + 1;
-    const rewardConfig = LAST_WEEK_REWARD_BY_RANK[rank];
-    if (!rewardConfig) continue;
-
-    const winner = rewardCandidates[index];
-    const archiveMarker = `season:last_week:${seasonWindow.start.toISOString()}:rank:${rank}`;
-    const existingArchive = await prisma.battle.findFirst({
-      where: {
-        battleType: 'season_reward',
-        attackerId: winner.userId,
-        defenderId: archiveMarker
-      },
-      select: { id: true }
-    });
-
-    const alreadyArchived = !!existingArchive;
-
-    if (!alreadyArchived && !dryRun) {
-      await prisma.$transaction([
-        prisma.user.update({
-          where: { id: winner.userId },
-          data: {
-            points: { increment: rewardConfig.points },
-            crystals: { increment: rewardConfig.crystals }
-          }
-        }),
-        prisma.battle.create({
-          data: {
-            attackerId: winner.userId,
-            defenderId: archiveMarker,
-            spaceLevel: winner.spaceLevel || 1,
-            winnerId: winner.userId,
-            battleType: 'season_reward',
-            attackerPower: 0,
-            defenderPower: 0,
-            attackerHealth: 0,
-            defenderHealth: 0,
-            rounds: 0,
-            log: JSON.stringify({
-              season: 'last_week',
-              weekStart: seasonWindow.start,
-              weekEnd: seasonWindow.end,
-              rank,
-              title: rewardConfig.title,
-              rewardPoints: rewardConfig.points,
-              rewardCrystals: rewardConfig.crystals
-            }),
-            pointsEarned: rewardConfig.points,
-            rewardType: 'seasonal_reward',
-            rewardAmount: rewardConfig.points,
-            status: 'completed',
-            endedAt: new Date()
-          }
-        })
-      ]);
-    }
-
-    seasonRewards.push({
-      userId: winner.userId,
-      username: winner.username,
-      rank,
-      title: rewardConfig.title,
-      points: rewardConfig.points,
-      crystals: rewardConfig.crystals,
-      archived: alreadyArchived || !dryRun
-    });
-  }
-
-  return {
-    season,
-    windowStart: seasonWindow.start,
-    windowEnd: seasonWindow.end,
-    bossLeaderboard,
-    seasonRewards
-  };
-}
-
 // Get all spaces
 router.get('/spaces', authMiddleware, async (req, res) => {
   try {
@@ -296,7 +38,6 @@ router.get('/spaces', authMiddleware, async (req, res) => {
 
     const user = req.user;
 
-    // Mark which spaces are unlocked for the user
     const spacesWithStatus = spaces.map(space => {
       const unlocked = user.spaceLevel >= space.level;
       const canEnter = user.power >= space.minPower && user.level >= space.minLevel;
@@ -315,260 +56,6 @@ router.get('/spaces', authMiddleware, async (req, res) => {
     res.json({ spaces: spacesWithStatus });
   } catch (error) {
     console.error('Get spaces error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Admin status for privileged UI controls
-router.get('/admin/status', authMiddleware, async (req, res) => {
-  try {
-    res.json({
-      isAdmin: isAdminUser(req.user),
-      username: req.user.username
-    });
-  } catch (error) {
-    console.error('Admin status error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Admin monitoring overview
-router.get('/admin/overview', authMiddleware, async (req, res) => {
-  try {
-    if (!isAdminUser(req.user)) {
-      return res.status(403).json({
-        message: 'Admin access required.'
-      });
-    }
-
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    const [
-      totalUsers,
-      playerUsers,
-      npcUsers,
-      onlineRecentUsers,
-      totalSpaces,
-      totalSpecies,
-      activeActivities,
-      totalBossBattles,
-      bossBattles24h
-    ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { isNpc: false } }),
-      prisma.user.count({ where: { isNpc: true } }),
-      prisma.user.count({ where: { isNpc: false, lastLogin: { gte: fiveMinutesAgo } } }),
-      prisma.space.count(),
-      prisma.species.count(),
-      prisma.activity.count({ where: { isActive: true } }),
-      prisma.battle.count({ where: { battleType: 'pve_boss' } }),
-      prisma.battle.count({ where: { battleType: 'pve_boss', createdAt: { gte: last24Hours } } })
-    ]);
-
-    const { seasonWindow: weekWindow, bossLeaderboard: weekBossLeaderboard } = await buildBossLeaderboardForSeason('week');
-    const topWeeklyBoss = weekBossLeaderboard.slice(0, 5).map((entry, index) => ({
-      rank: index + 1,
-      username: entry.username,
-      totalBossClears: entry.totalBossClears,
-      totalBossPoints: entry.totalBossPoints,
-      fastestClearRounds: entry.fastestClearRounds
-    }));
-
-    res.json({
-      metrics: {
-        totalUsers,
-        playerUsers,
-        npcUsers,
-        onlineRecentUsers,
-        totalSpaces,
-        totalSpecies,
-        activeActivities,
-        totalBossBattles,
-        bossBattles24h
-      },
-      weeklySeason: {
-        windowStart: weekWindow.start,
-        windowEnd: weekWindow.end,
-        topBossWarriors: topWeeklyBoss
-      }
-    });
-  } catch (error) {
-    console.error('Admin overview error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Admin user management
-router.get('/admin/users', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-    const includeNpc = String(req.query.includeNpc ?? 'true').toLowerCase() !== 'false';
-    const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
-    const pageSizeRaw = parseInt(String(req.query.pageSize ?? '25'), 10) || 25;
-    const pageSize = Math.min(Math.max(pageSizeRaw, 1), 100);
-    const skip = (page - 1) * pageSize;
-
-    const where = {
-      ...(includeNpc ? {} : { isNpc: false }),
-      ...(q
-        ? {
-            OR: [
-              { username: { contains: q, mode: 'insensitive' } },
-              { email: { contains: q, mode: 'insensitive' } },
-              { displayName: { contains: q, mode: 'insensitive' } }
-            ]
-          }
-        : {})
-    };
-
-    const [total, users] = await Promise.all([
-      prisma.user.count({ where }),
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: pageSize,
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          displayName: true,
-          avatar: true,
-          isNpc: true,
-          level: true,
-          power: true,
-          points: true,
-          crystals: true,
-          spaceLevel: true,
-          wins: true,
-          losses: true,
-          createdAt: true,
-          lastLogin: true
-        }
-      })
-    ]);
-
-    res.json({
-      page,
-      pageSize,
-      total,
-      users
-    });
-  } catch (error) {
-    console.error('Admin list users error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.patch('/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const { displayName, avatar, isNpc } = req.body || {};
-
-    const data = {};
-    if (displayName !== undefined) {
-      if (displayName === null) {
-        data.displayName = null;
-      } else if (typeof displayName === 'string') {
-        data.displayName = displayName.trim().slice(0, 64) || null;
-      } else {
-        return res.status(400).json({ message: 'Invalid displayName' });
-      }
-    }
-
-    if (avatar !== undefined) {
-      if (avatar === null) {
-        data.avatar = null;
-      } else if (typeof avatar === 'string') {
-        data.avatar = avatar.trim().slice(0, 512) || null;
-      } else {
-        return res.status(400).json({ message: 'Invalid avatar' });
-      }
-    }
-
-    if (isNpc !== undefined) {
-      if (typeof isNpc !== 'boolean') {
-        return res.status(400).json({ message: 'Invalid isNpc' });
-      }
-      data.isNpc = isNpc;
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({ message: 'No changes provided' });
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data,
-      select: {
-        id: true,
-        username: true,
-        email: true,
-        displayName: true,
-        avatar: true,
-        isNpc: true,
-        level: true,
-        power: true,
-        points: true,
-        crystals: true,
-        spaceLevel: true,
-        wins: true,
-        losses: true,
-        createdAt: true,
-        lastLogin: true
-      }
-    });
-
-    res.json({ user: updated });
-  } catch (error) {
-    console.error('Admin update user error:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.post('/admin/users/:id/reset-password', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const newPassword = typeof req.body?.newPassword === 'string' ? req.body.newPassword : '';
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword }
-    });
-
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Admin reset password error:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-router.delete('/admin/users/:id', authMiddleware, requireAdmin, async (req, res) => {
-  try {
-    const userId = req.params.id;
-    if (userId === req.user.id) {
-      return res.status(400).json({ message: 'Cannot delete your own account' });
-    }
-
-    await prisma.user.delete({ where: { id: userId } });
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Admin delete user error:', error);
-    if (error.code === 'P2025') {
-      return res.status(404).json({ message: 'User not found' });
-    }
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -740,7 +227,6 @@ router.get('/spaces/:level/players', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Space not unlocked yet' });
     }
 
-    // Get online players in this space (simulated - in production would use Redis/cache)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
     const players = await prisma.user.findMany({
@@ -764,7 +250,6 @@ router.get('/spaces/:level/players', authMiddleware, async (req, res) => {
       orderBy: { lastLogin: 'desc' }
     });
 
-    // Get NPCs in this space
     const npcs = await prisma.user.findMany({
       where: {
         isNpc: true,
@@ -812,58 +297,14 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Space not unlocked' });
     }
 
-    // Get user's total power with items
-    const inventory = await prisma.inventoryItem.findMany({
-      where: { userId: user.id }
-    });
+    const { totalPower, totalHealth } = await getUserTotalStats(prisma, user.id, user);
 
-    let totalPower = user.power;
-    let totalHealth = user.health;
+    const { attackerWon, battleLog, rounds } = simulateBattle(
+      totalPower, species.power, totalHealth, species.health, 50
+    );
 
-    inventory.forEach(item => {
-      totalPower += item.powerBonus * item.quantity;
-      totalHealth += item.healthBonus * item.quantity;
-    });
+    const playerWon = attackerWon;
 
-    // Simulate battle
-    const battleLog = [];
-    let attackerHealth = totalHealth;
-    let defenderHealth = species.health;
-    let round = 0;
-
-    while (attackerHealth > 0 && defenderHealth > 0 && round < 50) {
-      round++;
-
-      // Attacker attacks
-      const attackerDamage = Math.floor(totalPower * (0.8 + Math.random() * 0.4));
-      defenderHealth -= attackerDamage;
-      battleLog.push({
-        round,
-        actor: 'player',
-        action: 'attack',
-        damage: attackerDamage,
-        defenderHealth: Math.max(0, defenderHealth),
-        attackerHealth
-      });
-
-      if (defenderHealth <= 0) break;
-
-      // Defender attacks
-      const defenderDamage = Math.floor(species.power * (0.8 + Math.random() * 0.4));
-      attackerHealth -= defenderDamage;
-      battleLog.push({
-        round,
-        actor: 'species',
-        action: 'attack',
-        damage: defenderDamage,
-        attackerHealth: Math.max(0, attackerHealth),
-        defenderHealth
-      });
-    }
-
-    const playerWon = defenderHealth <= 0;
-
-    // Calculate rewards
     const space = await prisma.space.findUnique({
       where: { level: species.spaceLevel }
     });
@@ -874,7 +315,6 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
       : Math.floor(species.rewardPoints * multiplier * 0.1);
     const crystalsEarned = playerWon ? species.rewardCrystals : 0;
 
-    // Update user stats
     const experienceGain = playerWon ? pointsEarned * 2 : pointsEarned;
     const progression = calculateLevelProgression({
       currentExperience: user.experience,
@@ -882,10 +322,8 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
     });
     const { newExperience, newLevel, newPower, newMaxHealth } = progression;
 
-    // Check for level up
-    const maxSpaceLevel = await getMaxSpaceLevel();
-    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
-    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
+    const maxSpaceLevel = await getMaxSpaceLevel(prisma);
+    const spaceLevelUp = calculateSpaceLevelUp(newLevel, user.spaceLevel, maxSpaceLevel);
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -917,7 +355,6 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
       }
     });
 
-    // Create battle record (without defender FK constraint)
     await prisma.battle.create({
       data: {
         attackerId: user.id,
@@ -929,7 +366,7 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
         defenderPower: species.power,
         attackerHealth: totalHealth,
         defenderHealth: species.health,
-        rounds: round,
+        rounds,
         log: JSON.stringify(battleLog),
         pointsEarned,
         rewardType: crystalsEarned > 0 ? 'points_and_crystals' : 'points',
@@ -939,7 +376,6 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
       }
     });
 
-    // Possible item drop
     let itemDrop = null;
     if (playerWon && Math.random() < 0.3) {
       const rarities = ['common', 'common', 'common', 'rare', 'rare', 'epic'];
@@ -980,7 +416,7 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
     res.json({
       result: playerWon ? 'victory' : 'defeat',
       battleLog,
-      rounds: round,
+      rounds,
       rewards: {
         points: pointsEarned,
         crystals: crystalsEarned,
@@ -1040,55 +476,18 @@ router.post('/battle/boss', authMiddleware, async (req, res) => {
       });
     }
 
-    const inventory = await prisma.inventoryItem.findMany({
-      where: { userId: user.id }
-    });
-
-    let totalPower = user.power;
-    let totalHealth = user.health;
-    inventory.forEach(item => {
-      totalPower += item.powerBonus * item.quantity;
-      totalHealth += item.healthBonus * item.quantity;
-    });
+    const { totalPower, totalHealth } = await getUserTotalStats(prisma, user.id, user);
 
     const bossName = `${baseBoss.name} Prime`;
     const bossPower = Math.floor(baseBoss.power * 1.4);
     const bossHealth = Math.floor(baseBoss.health * 1.5);
 
-    const battleLog = [];
-    let attackerHealth = totalHealth;
-    let defenderHealth = bossHealth;
-    let round = 0;
+    const { attackerWon, battleLog, rounds } = simulateBattle(
+      totalPower, bossPower, totalHealth, bossHealth, 60,
+      [0.75, 1.1], [0.85, 1.2]
+    );
 
-    while (attackerHealth > 0 && defenderHealth > 0 && round < 60) {
-      round++;
-
-      const attackerDamage = Math.floor(totalPower * (0.75 + Math.random() * 0.35));
-      defenderHealth -= attackerDamage;
-      battleLog.push({
-        round,
-        actor: 'player',
-        action: 'attack',
-        damage: attackerDamage,
-        defenderHealth: Math.max(0, defenderHealth),
-        attackerHealth
-      });
-
-      if (defenderHealth <= 0) break;
-
-      const defenderDamage = Math.floor(bossPower * (0.85 + Math.random() * 0.35));
-      attackerHealth -= defenderDamage;
-      battleLog.push({
-        round,
-        actor: 'boss',
-        action: 'attack',
-        damage: defenderDamage,
-        attackerHealth: Math.max(0, attackerHealth),
-        defenderHealth
-      });
-    }
-
-    const playerWon = defenderHealth <= 0;
+    const playerWon = attackerWon;
 
     const space = await prisma.space.findUnique({ where: { level: spaceLevel } });
     const multiplier = space?.rewardMultiplier || 1;
@@ -1115,9 +514,8 @@ router.post('/battle/boss', authMiddleware, async (req, res) => {
       experienceGain
     });
     const { newExperience, newLevel, newPower, newMaxHealth } = progression;
-    const maxSpaceLevel = await getMaxSpaceLevel();
-    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
-    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
+    const maxSpaceLevel = await getMaxSpaceLevel(prisma);
+    const spaceLevelUp = calculateSpaceLevelUp(newLevel, user.spaceLevel, maxSpaceLevel);
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -1151,7 +549,7 @@ router.post('/battle/boss', authMiddleware, async (req, res) => {
         defenderPower: bossPower,
         attackerHealth: totalHealth,
         defenderHealth: bossHealth,
-        rounds: round,
+        rounds,
         log: JSON.stringify(battleLog),
         pointsEarned,
         rewardType: crystalsEarned > 0 ? 'points_and_crystals' : 'points',
@@ -1186,7 +584,7 @@ router.post('/battle/boss', authMiddleware, async (req, res) => {
       opponent: bossName,
       result: playerWon ? 'victory' : 'defeat',
       battleLog,
-      rounds: round,
+      rounds,
       rewards: {
         points: pointsEarned,
         crystals: crystalsEarned,
@@ -1228,19 +626,8 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       return res.status(403).json({ message: 'Space not unlocked' });
     }
 
-    // Get user's total power with items
-    const userInventory = await prisma.inventoryItem.findMany({
-      where: { userId: user.id }
-    });
+    const { totalPower: playerPower, totalHealth: playerHealth } = await getUserTotalStats(prisma, user.id, user);
 
-    let playerPower = user.power;
-    let playerHealth = user.health;
-    userInventory.forEach(item => {
-      playerPower += item.powerBonus * item.quantity;
-      playerHealth += item.healthBonus * item.quantity;
-    });
-
-    // Calculate NPC total stats
     let npcPower = npc.power;
     let npcHealth = npc.health;
     npc.inventory.forEach(item => {
@@ -1248,45 +635,12 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       npcHealth += item.healthBonus * item.quantity;
     });
 
-    // Simulate battle
-    const battleLog = [];
-    let attackerHealth = playerHealth;
-    let defenderHealth = npcHealth;
-    let round = 0;
+    const { attackerWon, battleLog, rounds } = simulateBattle(
+      playerPower, npcPower, playerHealth, npcHealth, 50
+    );
 
-    while (attackerHealth > 0 && defenderHealth > 0 && round < 50) {
-      round++;
+    const playerWon = attackerWon;
 
-      // Player attacks
-      const attackerDamage = Math.floor(playerPower * (0.8 + Math.random() * 0.4));
-      defenderHealth -= attackerDamage;
-      battleLog.push({
-        round,
-        actor: 'player',
-        action: 'attack',
-        damage: attackerDamage,
-        defenderHealth: Math.max(0, defenderHealth),
-        attackerHealth
-      });
-
-      if (defenderHealth <= 0) break;
-
-      // NPC attacks
-      const defenderDamage = Math.floor(npcPower * (0.8 + Math.random() * 0.4));
-      attackerHealth -= defenderDamage;
-      battleLog.push({
-        round,
-        actor: 'npc',
-        action: 'attack',
-        damage: defenderDamage,
-        attackerHealth: Math.max(0, attackerHealth),
-        defenderHealth
-      });
-    }
-
-    const playerWon = defenderHealth <= 0;
-
-    // Calculate rewards based on NPC strength
     const baseReward = npc.level * 20;
     const space = await prisma.space.findUnique({
       where: { level: npc.spaceLevel }
@@ -1297,16 +651,14 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       : Math.floor(baseReward * multiplier * 0.1);
     const crystalsEarned = playerWon ? Math.floor(npc.level / 5) : 0;
 
-    // Update user stats
     const experienceGain = playerWon ? pointsEarned * 2 : pointsEarned;
     const progression = calculateLevelProgression({
       currentExperience: user.experience,
       experienceGain
     });
     const { newExperience, newLevel, newPower, newMaxHealth } = progression;
-    const maxSpaceLevel = await getMaxSpaceLevel();
-    const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
-    const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
+    const maxSpaceLevel = await getMaxSpaceLevel(prisma);
+    const spaceLevelUp = calculateSpaceLevelUp(newLevel, user.spaceLevel, maxSpaceLevel);
 
     const updatedUser = await prisma.user.update({
       where: { id: user.id },
@@ -1329,7 +681,6 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       }
     });
 
-    // Create battle record
     await prisma.battle.create({
       data: {
         attackerId: user.id,
@@ -1341,7 +692,7 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
         defenderPower: npcPower,
         attackerHealth: playerHealth,
         defenderHealth: npcHealth,
-        rounds: round,
+        rounds,
         log: JSON.stringify(battleLog),
         pointsEarned,
         rewardType: crystalsEarned > 0 ? 'points_and_crystals' : 'points',
@@ -1351,7 +702,6 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       }
     });
 
-    // Update NPC stats too
     await prisma.user.update({
       where: { id: npc.id },
       data: {
@@ -1360,7 +710,6 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
       }
     });
 
-    // Possible item drop (higher chance vs NPC)
     let itemDrop = null;
     if (playerWon && Math.random() < 0.4) {
       const rarities = ['common', 'common', 'rare', 'rare', 'epic'];
@@ -1398,7 +747,7 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
     res.json({
       result: playerWon ? 'victory' : 'defeat',
       battleLog,
-      rounds: round,
+      rounds,
       opponent: npc.displayName || npc.username,
       rewards: {
         points: pointsEarned,
@@ -1411,84 +760,6 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error('Battle NPC error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get leaderboard
-router.get('/leaderboard', authMiddleware, async (req, res) => {
-  try {
-    const topPlayers = await prisma.user.findMany({
-      where: { isNpc: false },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        level: true,
-        power: true,
-        points: true,
-        crystals: true,
-        spaceLevel: true,
-        wins: true,
-        losses: true,
-      },
-      orderBy: [
-        { points: 'desc' },
-        { level: 'desc' }
-      ],
-      take: 50
-    });
-
-    res.json({ leaderboard: topPlayers });
-  } catch (error) {
-    console.error('Leaderboard error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Get global boss leaderboard
-router.get('/leaderboard/boss', authMiddleware, async (req, res) => {
-  try {
-    const season = ['all', 'week', 'last_week'].includes(req.query.season) ? req.query.season : 'all';
-    if (season === 'last_week') {
-      const archived = await archiveLastWeekRewards();
-      return res.json(archived);
-    }
-
-    const { seasonWindow, bossLeaderboard } = await buildBossLeaderboardForSeason(season);
-    res.json({
-      bossLeaderboard,
-      season,
-      windowStart: seasonWindow.start,
-      windowEnd: seasonWindow.end,
-      seasonRewards: []
-    });
-  } catch (error) {
-    console.error('Boss leaderboard error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Admin only: re-run last week archive and reward payouts
-router.post('/leaderboard/boss/archive/rerun', authMiddleware, async (req, res) => {
-  try {
-    if (!isAdminUser(req.user)) {
-      return res.status(403).json({
-        message: 'Admin access required. Set ADMIN_USERNAMES env to allow this action.'
-      });
-    }
-
-    const dryRun = req.query.dry_run === 'true' || req.body?.dryRun === true;
-    const result = await archiveLastWeekRewards({ dryRun });
-
-    res.json({
-      message: dryRun
-        ? 'Dry-run complete. No payouts written.'
-        : 'Last-week archive rerun complete.',
-      ...result
-    });
-  } catch (error) {
-    console.error('Boss archive rerun error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

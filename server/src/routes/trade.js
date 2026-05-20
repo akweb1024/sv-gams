@@ -108,6 +108,23 @@ router.post('/:id/accept', authMiddleware, async (req, res) => {
       return res.status(400).json({ message: 'Trade is no longer pending' });
     }
     
+    // Re-validate sender still has enough resources
+    const sender = await prisma.user.findUnique({ where: { id: trade.senderId } });
+    if (trade.offerType === 'points' && sender.points < trade.offerAmount) {
+      return res.status(400).json({ message: 'Sender no longer has sufficient points' });
+    }
+    if (trade.offerType === 'crystals' && sender.crystals < trade.offerAmount) {
+      return res.status(400).json({ message: 'Sender no longer has sufficient crystals' });
+    }
+    if (trade.offerType === 'item' && trade.offerItemId) {
+      const offerItem = await prisma.inventoryItem.findFirst({
+        where: { id: trade.offerItemId, userId: sender.id }
+      });
+      if (!offerItem) {
+        return res.status(400).json({ message: 'Offered item no longer in sender inventory' });
+      }
+    }
+
     // Validate receiver has enough resources
     if (trade.requestType === 'points') {
       if (user.points < trade.requestAmount) {
