@@ -54,6 +54,9 @@ function Navbar() {
           <div className="nav-links">
             <Link to="/spaces">{t('spaces')}</Link>
             <Link to="/activities/1">{t('activities')}</Link>
+            <Link to="/quests">📜 Quests</Link>
+            <Link to="/shop">🛒 Shop</Link>
+            <Link to="/skills">🎯 Skills</Link>
             <Link to="/alliances">{t('alliances')}</Link>
             <Link to="/trades">{t('trades')}</Link>
             <Link to="/leaderboard">{t('leaderboard')}</Link>

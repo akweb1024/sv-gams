@@ -1972,3 +1972,81 @@ a:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   Expansion: Shop, Skills/Classes, Quests
+   ============================================================ */
+
+/* Rarity accents (shared by shop/inventory/skill cards) */
+.rarity-badge.common   { background: linear-gradient(135deg, #7f8c9b, #5a6a7a); }
+.rarity-badge.rare     { background: linear-gradient(135deg, #3498db, #2471a3); }
+.rarity-badge.epic     { background: linear-gradient(135deg, #9b59b6, #6c3483); }
+.rarity-badge.legendary{ background: linear-gradient(135deg, #f39c12, #b9770e); }
+.rarity-badge.mythic   { background: linear-gradient(135deg, #e74c3c, #b03a2e); }
+.rarity-badge.celestial{ background: linear-gradient(135deg, #1abc9c, #16a085); }
+
+.shop-item.rarity-common    { border-color: #5a6a7a; }
+.shop-item.rarity-rare      { border-color: #3498db; }
+.shop-item.rarity-epic      { border-color: #9b59b6; }
+.shop-item.rarity-legendary { border-color: #f39c12; box-shadow: 0 0 16px rgba(243,156,18,0.18); }
+.shop-item.rarity-mythic    { border-color: #e74c3c; box-shadow: 0 0 16px rgba(231,76,60,0.20); }
+.shop-item.rarity-celestial { border-color: #1abc9c; box-shadow: 0 0 18px rgba(26,188,156,0.25); }
+
+/* Wallet / stat bars */
+.shop-wallet, .skills-bar, .daily-reward-card {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+.daily-reward-card { justify-content: space-between; }
+.shop-wallet .stat, .skills-bar .stat { font-size: 0.95rem; }
+
+.shop-tabs { display: flex; gap: 10px; margin-bottom: 18px; }
+
+/* Grids of item/shop cards */
+.shop-grid, .class-grid, .quest-grid, .skill-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.shop-item { display: flex; flex-direction: column; }
+.shop-item.equipped { box-shadow: var(--glow); }
+.shop-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.shop-item-head .item-icon { font-size: 1.6rem; }
+.item-desc { color: var(--text-secondary); font-size: 0.82rem; margin: 4px 0 10px; flex: 1; }
+.item-bonuses, .class-mods { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.item-stat { background: var(--bg-hover); padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+.item-price { display: flex; gap: 12px; margin-bottom: 10px; font-weight: 700; color: var(--accent-gold); }
+.item-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+.item-actions button { flex: 1; font-size: 0.78rem; padding: 7px 8px; }
+.equipped-badge { margin-left: auto; font-size: 0.7rem; font-weight: 700; color: var(--accent-success); text-transform: uppercase; }
+.upgrade-tag { color: var(--accent-gold); font-weight: 700; }
+
+/* Class picker */
+.class-card { text-align: center; }
+.class-icon { font-size: 2.6rem; display: block; margin-bottom: 8px; }
+.class-card .class-mods { justify-content: center; }
+
+/* Skill tree */
+.skill-tree { display: flex; flex-direction: column; gap: 20px; }
+.skill-tier-label { color: var(--accent-gold); margin-bottom: 10px; font-size: 1rem; }
+.skill-node { border-left: 4px solid var(--border-color); }
+.skill-node.unlocked  { border-left-color: var(--accent-success); }
+.skill-node.available { border-left-color: var(--accent-primary); box-shadow: var(--glow); }
+.skill-node.locked    { opacity: 0.6; }
+.skill-node h4 { color: var(--accent-primary); margin-bottom: 6px; }
+.skill-node p { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 10px; }
+.skill-req { color: var(--accent-danger) !important; font-size: 0.75rem !important; }
+
+/* Quests */
+.quest-section { margin-bottom: 26px; }
+.quest-section h2 { margin-bottom: 12px; }
+.quest-note { font-size: 0.75rem; color: var(--text-muted); font-weight: 400; }
+.quest-card { display: flex; flex-direction: column; }
+.quest-card.completed { border-color: var(--accent-success); }
+.quest-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.quest-head h3 { font-size: 1rem; }
+.quest-desc { color: var(--text-secondary); font-size: 0.82rem; margin: 6px 0 10px; flex: 1; }
+.quest-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 0.8rem; }
+.quest-progress { color: var(--text-secondary); font-weight: 600; }
+.quest-rewards { display: flex; gap: 8px; flex-wrap: wrap; }
+.quest-card button { margin-top: 12px; }

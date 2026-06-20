@@ -14,6 +14,9 @@ import Activities from './pages/Activities'
 import ActivityPlay from './pages/ActivityPlay'
 import Alliances from './pages/Alliances'
 import Trades from './pages/Trades'
+import Shop from './pages/Shop'
+import Skills from './pages/Skills'
+import Quests from './pages/Quests'
 import Leaderboard from './pages/Leaderboard'
 import Profile from './pages/Profile'
 import AdminDashboard from './pages/AdminDashboard'
@@ -39,6 +42,9 @@ function App() {
                 <Route path="/activity/:id" element={<PrivateRoute><ActivityPlay /></PrivateRoute>} />
                 <Route path="/alliances" element={<PrivateRoute><Alliances /></PrivateRoute>} />
                 <Route path="/trades" element={<PrivateRoute><Trades /></PrivateRoute>} />
+                <Route path="/shop" element={<PrivateRoute><Shop /></PrivateRoute>} />
+                <Route path="/skills" element={<PrivateRoute><Skills /></PrivateRoute>} />
+                <Route path="/quests" element={<PrivateRoute><Quests /></PrivateRoute>} />
                 <Route path="/leaderboard" element={<PrivateRoute><Leaderboard /></PrivateRoute>} />
                 <Route path="/profile/:username" element={<PrivateRoute><Profile /></PrivateRoute>} />
                 <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />

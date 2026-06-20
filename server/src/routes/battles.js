@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../utils/prisma');
 const authMiddleware = require('../middleware/auth');
 const { simulateBattle, calculateLevelProgression, getMaxSpaceLevel, calculateSpaceLevelUp, getUserTotalStats } = require('../utils/battle');
+const { awardBattleProgress } = require('../utils/progression');
 
 const router = express.Router();
 const BOSS_COOLDOWN_MINUTES = 20;
@@ -413,6 +414,8 @@ router.post('/battle/species', authMiddleware, async (req, res) => {
       });
     }
 
+    await awardBattleProgress(prisma, user.id, { won: playerWon, kind: 'species', oldLevel: user.level, newLevel });
+
     res.json({
       result: playerWon ? 'victory' : 'defeat',
       battleLog,
@@ -579,6 +582,8 @@ router.post('/battle/boss', authMiddleware, async (req, res) => {
       });
     }
 
+    await awardBattleProgress(prisma, user.id, { won: playerWon, kind: 'boss', oldLevel: user.level, newLevel });
+
     res.json({
       mode: 'boss',
       opponent: bossName,
@@ -743,6 +748,8 @@ router.post('/battle/npc', authMiddleware, async (req, res) => {
         }
       });
     }
+
+    await awardBattleProgress(prisma, user.id, { won: playerWon, kind: 'npc', oldLevel: user.level, newLevel });
 
     res.json({
       result: playerWon ? 'victory' : 'defeat',

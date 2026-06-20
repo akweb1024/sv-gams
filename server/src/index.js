@@ -17,6 +17,9 @@ const tradeRoutes = require('./routes/trade');
 const activityRoutes = require('./routes/activities');
 const leaderboardRoutes = require('./routes/leaderboard');
 const adminRoutes = require('./routes/admin');
+const shopRoutes = require('./routes/shop');
+const skillsRoutes = require('./routes/skills');
+const questRoutes = require('./routes/quests');
 
 const app = express();
 const server = http.createServer(app);
@@ -81,7 +84,12 @@ app.use('/api/alliance', allianceRoutes);
 app.use('/api/trade', tradeRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/game', leaderboardRoutes);
+app.use('/api/shop', shopRoutes);
+app.use('/api/skills', skillsRoutes);
+app.use('/api/quests', questRoutes);
 app.use('/api', adminRoutes);
+// The client calls admin endpoints under the /api/game namespace; mount there too.
+app.use('/api/game', adminRoutes);
 
 // Socket.io for real-time features
 const connectedUsers = new Map(); // socketId -> { userId, username, spaceLevel }

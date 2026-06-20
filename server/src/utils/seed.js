@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const prisma = require('./prisma');
+const seedExpansion = require('./seedExpansion');
 
 const spacesData = [
   { level: 1, name: 'Space-1: The Beginning', description: 'Where warriors first awaken. The frontier of the unknown.', minPower: 0, minLevel: 1, rewardMultiplier: 1.0, speciesCount: 5 },
@@ -490,6 +491,9 @@ async function seed() {
     });
   }
   console.log(`Seeded ${npcWarriorsData.length} NPC warriors`);
+
+  // Seed expansion content: spaces 11-15, shop, skills, quests
+  await seedExpansion();
 
   console.log('Database seed complete!');
 }

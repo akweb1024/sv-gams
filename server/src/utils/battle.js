@@ -63,20 +63,13 @@ function calculateSpaceLevelUp(newLevel, currentSpaceLevel, maxSpaceLevel) {
   return Math.min(unlockedSpaceLevel, maxSpaceLevel);
 }
 
+// Effective combat stats now factor in equipped gear, unlocked skills, and the
+// chosen character class (see progression.js). Kept as getUserTotalStats so the
+// existing battle handlers continue to work unchanged.
 async function getUserTotalStats(prisma, userId, baseUser) {
-  const inventory = await prisma.inventoryItem.findMany({
-    where: { userId }
-  });
-
-  let totalPower = baseUser.power;
-  let totalHealth = baseUser.health;
-
-  inventory.forEach(item => {
-    totalPower += item.powerBonus * item.quantity;
-    totalHealth += item.healthBonus * item.quantity;
-  });
-
-  return { totalPower, totalHealth, inventory };
+  const { getEffectiveStats } = require('./progression');
+  const { totalPower, totalHealth, breakdown } = await getEffectiveStats(prisma, userId, baseUser);
+  return { totalPower, totalHealth, breakdown };
 }
 
 module.exports = {

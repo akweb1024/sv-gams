@@ -26,6 +26,10 @@ const authMiddleware = async (req, res, next) => {
         wins: true,
         losses: true,
         experience: true,
+        className: true,
+        skillPoints: true,
+        dailyStreak: true,
+        lastDailyClaim: true,
       }
     });
     

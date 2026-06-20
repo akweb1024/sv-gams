@@ -31,6 +31,14 @@ model User {
   losses     Int @default(0)
   draws      Int @default(0)
 
+  // Class & skills
+  className   String? // warrior, mage, assassin, guardian
+  skillPoints Int     @default(0)
+
+  // Daily rewards
+  lastDailyClaim DateTime?
+  dailyStreak    Int       @default(0)
+
   // Timestamps
   createdAt DateTime @default(now())
   lastLogin DateTime @default(now())
@@ -41,6 +49,8 @@ model User {
   alliances         AllianceMember[]
   tradesSent        Trade[]          @relation("TradeSender")
   tradesReceived    Trade[]          @relation("TradeReceiver")
+  skills            UserSkill[]
+  quests            UserQuest[]
 
   @@index([points, level])
   @@index([isNpc, spaceLevel])
@@ -49,17 +59,21 @@ model User {
 }
 
 model InventoryItem {
-  id          String @id @default(uuid())
+  id          String  @id @default(uuid())
   userId      String
-  itemType    String // weapon, armor, potion, artifact, etc.
+  itemType    String // weapon, armor, potion, artifact, accessory
   itemName    String
-  rarity      String @default("common")
-  powerBonus  Int    @default(0)
-  healthBonus Int    @default(0)
-  quantity    Int    @default(1)
+  rarity      String  @default("common")
+  powerBonus  Int     @default(0)
+  healthBonus Int     @default(0)
+  quantity    Int     @default(1)
+  slot        String? // weapon, armor, accessory (null = unequippable, e.g. potion)
+  equipped    Boolean @default(false)
+  upgradeLevel Int    @default(0)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, equipped])
   @@map("inventory_items")
 }
 
@@ -207,4 +221,87 @@ model UserActivity {
   @@index([userId, activityId])
   @@index([userId, completedAt])
   @@map("user_activities")
+}
+
+model ShopItem {
+  id            String  @id @default(uuid())
+  name          String  @unique
+  description   String
+  itemType      String // weapon, armor, accessory, potion
+  slot          String // weapon, armor, accessory
+  rarity        String  @default("common")
+  powerBonus    Int     @default(0)
+  healthBonus   Int     @default(0)
+  pricePoints   Int     @default(0)
+  priceCrystals Int     @default(0)
+  minLevel      Int     @default(1)
+  isActive      Boolean @default(true)
+
+  @@index([isActive, minLevel])
+  @@map("shop_items")
+}
+
+model Skill {
+  id               String  @id @default(uuid())
+  key              String  @unique
+  name             String
+  description      String
+  className        String // warrior, mage, assassin, guardian
+  tier             Int     @default(1)
+  cost             Int     @default(1) // skill points
+  powerBonus       Int     @default(0)
+  healthBonus      Int     @default(0)
+  damageMultiplier Float   @default(1.0)
+  requires         String? // prerequisite skill key
+
+  @@index([className, tier])
+  @@map("skills")
+}
+
+model UserSkill {
+  id         String   @id @default(uuid())
+  userId     String
+  skillKey   String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skillKey])
+  @@map("user_skills")
+}
+
+model Quest {
+  id                String  @id @default(uuid())
+  key               String  @unique
+  title             String
+  description       String
+  category          String // daily, weekly, achievement
+  goalType          String // win_battles, defeat_species, defeat_npc, defeat_boss, complete_activities, earn_points, reach_level
+  goalCount         Int     @default(1)
+  rewardPoints      Int     @default(0)
+  rewardCrystals    Int     @default(0)
+  rewardXp          Int     @default(0)
+  rewardSkillPoints Int     @default(0)
+  minLevel          Int     @default(1)
+  isActive          Boolean @default(true)
+
+  @@index([category, isActive])
+  @@map("quests")
+}
+
+model UserQuest {
+  id        String   @id @default(uuid())
+  userId    String
+  questId   String
+  progress  Int      @default(0)
+  completed Boolean  @default(false)
+  claimed   Boolean  @default(false)
+  periodKey String // daily: 2026-06-20, weekly: 2026-W25, achievement: all
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questId, periodKey])
+  @@index([userId, completed, claimed])
+  @@map("user_quests")
 }

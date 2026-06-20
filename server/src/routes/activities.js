@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../utils/prisma');
 const authMiddleware = require('../middleware/auth');
+const { awardActivityProgress } = require('../utils/progression');
 
 const router = express.Router();
 
@@ -197,6 +198,7 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
 
     // Give rewards if passed and not previously completed
     let rewards = null;
+    let levelAfter = user.level;
     if (passed && !wasCompletedBefore) {
       const pointsEarned = activity.rewardPoints;
       const crystalsEarned = activity.rewardCrystals;
@@ -210,6 +212,9 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
       const unlockedSpaceLevel = newLevel >= (user.spaceLevel * 5) ? user.spaceLevel + 1 : user.spaceLevel;
       const spaceLevelUp = Math.min(unlockedSpaceLevel, maxSpaceLevel);
 
+      const levelGain = Math.max(0, newLevel - user.level);
+      levelAfter = newLevel;
+
       await prisma.user.update({
         where: { id: user.id },
         data: {
@@ -220,7 +225,8 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
           health: newMaxHealth,
           points: { increment: pointsEarned },
           crystals: { increment: crystalsEarned },
-          spaceLevel: spaceLevelUp
+          spaceLevel: spaceLevelUp,
+          skillPoints: levelGain > 0 ? { increment: levelGain } : undefined
         }
       });
 
@@ -231,6 +237,9 @@ router.post('/:id/submit', authMiddleware, async (req, res) => {
         leveledUp: newLevel > user.level
       };
     }
+
+    // Track quest/achievement progress for completing activities.
+    await awardActivityProgress(prisma, user.id, { completed: passed, level: levelAfter });
 
     res.json({
       score,
